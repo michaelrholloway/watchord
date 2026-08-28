@@ -149,7 +149,7 @@ mod tests {
     fn parse_reads_note_views_real_stamps() {
         assert_eq!(
             parse("2026-08-17T00:33:32Z"),
-            Some(UNIX_EPOCH + Duration::from_secs(1_786_840_412))
+            Some(UNIX_EPOCH + Duration::from_secs(1_786_926_812))
         );
     }
 
