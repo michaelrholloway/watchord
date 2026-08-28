@@ -4,6 +4,8 @@ A terminal app that watches MIDI input and names the chord you are playing, in M
 
 ![screenshot: coming with the first release](docs/screenshot.png)
 
-- `brew install michaelrholloway/tap/watchord` — coming with the first release
-- `npx watchord` — coming with the first release
-- `cargo install watchord` — coming with the first release
+From v0.1.0:
+
+- `brew install michaelrholloway/tap/watchord`
+- `npx watchord`
+- `cargo install watchord`
