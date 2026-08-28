@@ -1,0 +1,24 @@
+ WATCHORD               CHORD DISPLAYER        ALL NOTES                3 NOTES
+ ──────────────────────────────────────────────────────────────────────────────
+  INPUT FAKE    STATE HELD
+  NOW PLAYING    ALL NOTES
+ §  Every note                                                     3 · 2 CHORDS
+               NOTE                    WRITTEN AS    WHEN
+ ──────────────────────────────────────────────────────────────────────────────
+ C6          ▌ 0.4.7.9
+             ▌ try it with the 9 on t  AM7           YYYY-MM-DD HH:MM    DELETE
+             ▌ sounds like the Rhodes  C6            YYYY-MM-DD HH:MM    DELETE
+ F           ▌ 0.5.9
+             ▌ plain, but it lands     F             YYYY-MM-DD HH:MM    DELETE
+
+
+
+
+
+
+
+
+
+
+
+ TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT

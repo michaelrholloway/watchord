@@ -1,0 +1,24 @@
+ WATCHORD               CHORD DISPLAYER        NOW PLAYING              0 NOTES
+ ──────────────────────────────────────────────────────────────────────────────
+  INPUT FAKE    STATE HELD
+  NOW PLAYING    ALL NOTES
+ ┌────────────────────────────────────────────────────────────────────────────┐
+ │                         ▄▀▀▀▀ ▄█  ▀██▄   ▄▄▀ ████▀                         │
+ │                         ▀▄▄▄▄ ▄█▄ ▄▄▄▀ ▄▀    █▄▄▄▄                         │
+ │                            C major, minor 7, 13                            │
+ │                                 ·NO5 ·NO11                                 │
+ └────────────────────────────────────────────────────────────────────────────┘
+ 01  Alternate readings                                                       2
+   READING             AXIS         FIT           SAID ALOUD
+ ──────────────────────────────────────────────────────────────────────────────
+ ▌ Cm7/E ≈             RE-ROOTED                  C minor 7
+ ▌ Am7/E               RE-ROOTED                  A minor 7
+  KEYS  E3  C4  A#4  D5  A5
+ 02  Notes on this chord                                                      0
+   none yet
+
+
+
+
+ ▌ add a note…
+ TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT
