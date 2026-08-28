@@ -73,27 +73,33 @@ pub mod fit {
 
 /// How common a chord quality is, as a bonus in `0..=18`. Ordinary triads and
 /// dominant sevenths sit at the top; the exotica at the bottom must earn its
-/// place on the other terms.
+/// place on the other terms. `power` sits at the `sus4` tier;
+/// `diminishedMajor7` at the bottom, under `augmentedMajor7`.
+pub const QUALITY_COMMONNESS: [(&str, i32); 18] = [
+    ("major", 18),
+    ("minor", 17),
+    ("dominant7", 16),
+    ("major7", 15),
+    ("minor7", 15),
+    ("sus4", 12),
+    ("sus2", 11),
+    ("major6", 12),
+    ("minor6", 10),
+    ("diminished", 10),
+    ("augmented", 8),
+    ("halfDiminished", 9),
+    ("fullyDiminished", 9),
+    ("minorMajor7", 6),
+    ("augmented7", 5),
+    ("augmentedMajor7", 4),
+    ("power", 12),
+    ("diminishedMajor7", 3),
+];
+
+/// The commonness bonus for a quality key, or `None` if nothing weights it.
 pub fn quality_commonness(key: &str) -> Option<i32> {
-    Some(match key {
-        "major" => 18,
-        "minor" => 17,
-        "dominant7" => 16,
-        "major7" => 15,
-        "minor7" => 15,
-        "sus4" => 12,
-        "sus2" => 11,
-        "major6" => 12,
-        "minor6" => 10,
-        "diminished" => 10,
-        "augmented" => 8,
-        "halfDiminished" => 9,
-        "fullyDiminished" => 9,
-        "minorMajor7" => 6,
-        "augmented7" => 5,
-        "augmentedMajor7" => 4,
-        "power" => 12,
-        "diminishedMajor7" => 3,
-        _ => return None,
-    })
+    QUALITY_COMMONNESS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, v)| *v)
 }

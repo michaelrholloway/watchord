@@ -20,7 +20,10 @@ fn bass_pitch_class_is_the_bass_notes_class_not_the_lowest_class() {
     // A first-inversion C major sounds E in the bass. The lowest *pitch class*
     // present is C (0), but the bass is E (4).
     let first_inversion_c = SoundingSet::new([64, 67, 72]);
-    assert_eq!(first_inversion_c.bass_pitch_class(), Some(PitchClass::new(4)));
+    assert_eq!(
+        first_inversion_c.bass_pitch_class(),
+        Some(PitchClass::new(4))
+    );
     assert_eq!(
         first_inversion_c.pitch_classes().iter().next().copied(),
         Some(PitchClass::new(0))
@@ -43,6 +46,12 @@ fn silence_is_empty_and_keys_to_the_empty_chord_key() {
 
 #[test]
 fn equal_sets_are_equal_regardless_of_the_order_they_were_built_in() {
-    assert_eq!(SoundingSet::new([60, 64, 67]), SoundingSet::new([67, 64, 60]));
-    assert_ne!(SoundingSet::new([60, 64, 67]), SoundingSet::new([60, 64, 67, 72]));
+    assert_eq!(
+        SoundingSet::new([60, 64, 67]),
+        SoundingSet::new([67, 64, 60])
+    );
+    assert_ne!(
+        SoundingSet::new([60, 64, 67]),
+        SoundingSet::new([60, 64, 67, 72])
+    );
 }
