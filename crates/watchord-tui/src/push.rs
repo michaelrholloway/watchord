@@ -465,13 +465,28 @@ pub fn ghost_button(label: &str, selected: bool) -> Span<'static> {
 
 /// `p-tabs`, underline variant: the selected tab carries the accent rule
 /// beneath it. Two rows; one row when `compact`, where the selected tab sits
-/// on the accent field instead.
-pub fn tabs(items: &[&str], selected: usize, compact: bool, area: Rect, buf: &mut Buffer) {
+/// on the accent field instead. Returns one rect per tab, the label and its
+/// underline, for hit-testing a click.
+pub fn tabs(
+    items: &[&str],
+    selected: usize,
+    compact: bool,
+    area: Rect,
+    buf: &mut Buffer,
+) -> Vec<Rect> {
     let mut label_spans: Vec<Span<'static>> = Vec::new();
     let mut underline_spans: Vec<Span<'static>> = Vec::new();
+    let mut rects = Vec::with_capacity(items.len());
+    let mut x = area.x;
     for (index, item) in items.iter().enumerate() {
         let text = format!(" {} ", item.to_uppercase());
         let width = text.width();
+        rects.push(Rect {
+            x,
+            width: (width as u16).min((area.x + area.width).saturating_sub(x)),
+            ..area
+        });
+        x += width as u16 + 2;
         let is_selected = index == selected;
         let label = if is_selected {
             if compact {
@@ -503,6 +518,7 @@ pub fn tabs(items: &[&str], selected: usize, compact: bool, area: Rect, buf: &mu
         lines.push(Line::from(underline_spans));
     }
     Paragraph::new(lines).render(area, buf);
+    rects
 }
 
 /// Rows `tabs` takes.
@@ -653,6 +669,19 @@ pub struct Section {
     pub rows: Vec<TableRow>,
 }
 
+/// One body row as it was drawn: which row, where, and where each of its
+/// cells went. What a click is tested against — the rects the table laid
+/// out, never a second layout.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DrawnRow {
+    /// The row's index, counting every row in every section.
+    pub index: usize,
+    /// The whole row, bar included.
+    pub area: Rect,
+    /// One rect per column, at this row.
+    pub cells: Vec<Rect>,
+}
+
 /// `p-table`. The head row takes `head_rule` beneath it; body rows take the
 /// `row` role. Rows past `area` are clipped; `first_row` scrolls them.
 pub struct Table<'a> {
@@ -687,9 +716,11 @@ impl Table<'_> {
             .to_vec()
     }
 
-    pub fn render(&self, area: Rect, buf: &mut Buffer) {
+    /// Draws the table and returns every body row it drew.
+    pub fn render(&self, area: Rect, buf: &mut Buffer) -> Vec<DrawnRow> {
+        let mut drawn = Vec::new();
         if area.height == 0 {
-            return;
+            return drawn;
         }
         let gutter = if self.has_gutter() { Self::GUTTER } else { 0 };
         // Every body row carries the row role: a 2-column leading bar.
@@ -747,6 +778,11 @@ impl Table<'_> {
                         buf,
                     );
                 }
+                drawn.push(DrawnRow {
+                    index: this,
+                    area: row_area,
+                    cells: column_areas.iter().map(|c| Rect { y, ..*c }).collect(),
+                });
                 let selected = self.selected == Some(this);
                 let ink = if selected {
                     ACCENT_BACKGROUND
@@ -773,6 +809,7 @@ impl Table<'_> {
                 y += 1;
             }
         }
+        drawn
     }
 }
 

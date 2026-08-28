@@ -133,7 +133,9 @@ fn render(model: &AppModel, width: u16, height: u16) -> Vec<String> {
     let mut terminal = Terminal::new(backend).expect("a test terminal");
     let ui = UiState::default();
     terminal
-        .draw(|frame| draw(frame, model, &ui))
+        .draw(|frame| {
+            draw(frame, model, &ui);
+        })
         .expect("a frame");
     let buffer = terminal.backend().buffer();
     (0..height)

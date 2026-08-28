@@ -12,7 +12,7 @@
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Constraint, Rect};
+use ratatui::layout::{Alignment, Constraint, Position, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
@@ -27,7 +27,8 @@ use crate::push::{
 use crate::when;
 
 /// What the skin holds that the model does not: which note row the keys have
-/// selected on each screen. Nothing else — the draft text lives on the model.
+/// selected on each screen, and how far the wheel has scrolled each table.
+/// Nothing else — the draft text lives on the model.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UiState {
     /// The selected note on Now Playing, an index into
@@ -36,6 +37,97 @@ pub struct UiState {
     /// The selected note on All Notes, an ordinal over every note in every
     /// group, in the order drawn.
     pub selected_all_notes: Option<usize>,
+    /// Rows scrolled off the top of each table by the wheel.
+    pub scroll: Scroll,
+}
+
+/// The three tables the wheel can scroll.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ScrollTarget {
+    Alternates,
+    Notes,
+    AllNotes,
+}
+
+/// Rows scrolled off the top of each table.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Scroll {
+    pub alternates: usize,
+    pub notes: usize,
+    pub all_notes: usize,
+}
+
+impl Scroll {
+    pub fn get(&self, target: ScrollTarget) -> usize {
+        match target {
+            ScrollTarget::Alternates => self.alternates,
+            ScrollTarget::Notes => self.notes,
+            ScrollTarget::AllNotes => self.all_notes,
+        }
+    }
+
+    pub fn set(&mut self, target: ScrollTarget, rows: usize) {
+        match target {
+            ScrollTarget::Alternates => self.alternates = rows,
+            ScrollTarget::Notes => self.notes = rows,
+            ScrollTarget::AllNotes => self.all_notes = rows,
+        }
+    }
+}
+
+/// Where the last frame put the things a mouse can hit. Filled by [`draw`]
+/// from the rects ratatui laid out; the event loop tests a click against it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Hits {
+    /// Each tab's rect and the screen it opens.
+    pub tabs: Vec<(Rect, Screen)>,
+    /// Each drawn note row and the note's ordinal on this screen.
+    pub note_rows: Vec<(Rect, usize)>,
+    /// Each drawn `delete` cell and the note's ordinal.
+    pub delete_cells: Vec<(Rect, usize)>,
+    /// The note field.
+    pub field: Option<Rect>,
+    /// Each scrollable table's rect.
+    pub scroll_areas: Vec<(Rect, ScrollTarget)>,
+}
+
+impl Hits {
+    fn at<T: Copy>(items: &[(Rect, T)], x: u16, y: u16) -> Option<T> {
+        let position = Position::new(x, y);
+        items
+            .iter()
+            .find(|(rect, _)| rect.contains(position))
+            .map(|(_, item)| *item)
+    }
+
+    pub fn tab_at(&self, x: u16, y: u16) -> Option<Screen> {
+        Self::at(&self.tabs, x, y)
+    }
+
+    pub fn note_row_at(&self, x: u16, y: u16) -> Option<usize> {
+        Self::at(&self.note_rows, x, y)
+    }
+
+    pub fn delete_at(&self, x: u16, y: u16) -> Option<usize> {
+        Self::at(&self.delete_cells, x, y)
+    }
+
+    pub fn field_at(&self, x: u16, y: u16) -> bool {
+        self.field
+            .is_some_and(|rect| rect.contains(Position::new(x, y)))
+    }
+
+    pub fn scroll_at(&self, x: u16, y: u16) -> Option<ScrollTarget> {
+        Self::at(&self.scroll_areas, x, y)
+    }
+}
+
+/// What one frame produced besides pixels.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Drawn {
+    /// Where the text cursor goes, when the note field is on screen.
+    pub cursor: Option<(u16, u16)>,
+    pub hits: Hits,
 }
 
 impl UiState {
@@ -67,25 +159,21 @@ pub const TALL_FROM: u16 = 30;
 /// The one-line key reference at the foot of every screen.
 const KEYS_HELP: &str = "tab screen · ↑↓ select · d delete · enter save · q quit";
 
-/// Draws the whole frame.
-pub fn draw(frame: &mut Frame, model: &AppModel, ui: &UiState) {
+/// Draws the whole frame. Returns what the mouse can hit in it.
+pub fn draw(frame: &mut Frame, model: &AppModel, ui: &UiState) -> Hits {
     let area = frame.area();
     let buf = frame.buffer_mut();
     buf.set_style(area, push::page());
-    let cursor = draw_into(area, buf, model, ui);
-    if let Some(position) = cursor {
+    let drawn = draw_into(area, buf, model, ui);
+    if let Some(position) = drawn.cursor {
         frame.set_cursor_position(position);
     }
+    drawn.hits
 }
 
-/// Draws the whole frame into a buffer. Returns where the text cursor goes,
-/// when the note field is on screen.
-pub fn draw_into(
-    area: Rect,
-    buf: &mut Buffer,
-    model: &AppModel,
-    ui: &UiState,
-) -> Option<(u16, u16)> {
+/// Draws the whole frame into a buffer.
+pub fn draw_into(area: Rect, buf: &mut Buffer, model: &AppModel, ui: &UiState) -> Drawn {
+    let mut hits = Hits::default();
     let compact = area.height < COMPACT_BELOW;
     let tall = area.height >= TALL_FROM;
     let margin = if compact { 1 } else { 2 };
@@ -120,13 +208,14 @@ pub fn draw_into(
         .iter()
         .position(|s| *s == model.screen)
         .unwrap_or(0);
-    push::tabs(
+    let tab_rects = push::tabs(
         &[Screen::NowPlaying.title(), Screen::AllNotes.title()],
         selected_tab,
         compact,
         tabs,
         buf,
     );
+    hits.tabs = tab_rects.into_iter().zip(Screen::ALL).collect();
     if tall {
         cursor.skip(1);
     }
@@ -135,13 +224,14 @@ pub fn draw_into(
     let help = cursor.take_bottom(1);
     Paragraph::new(Line::from(push::meta(KEYS_HELP))).render(help, buf);
 
-    match model.screen {
-        Screen::NowPlaying => now_playing(model, ui, compact, tall, cursor, buf),
+    let cursor = match model.screen {
+        Screen::NowPlaying => now_playing(model, ui, compact, tall, cursor, buf, &mut hits),
         Screen::AllNotes => {
-            all_notes(model, ui, compact, cursor, buf);
+            all_notes(model, ui, compact, cursor, buf, &mut hits);
             None
         }
-    }
+    };
+    Drawn { cursor, hits }
 }
 
 /// A top-down allocator over one column of rows, with a bottom edge that
@@ -276,6 +366,7 @@ fn now_playing(
     tall: bool,
     mut cursor: Cursor,
     buf: &mut Buffer,
+    hits: &mut Hits,
 ) -> Option<(u16, u16)> {
     // The note field is anchored at the foot, above the key reference, so it is
     // never the thing a short terminal clips.
@@ -294,10 +385,14 @@ fn now_playing(
     if !compact {
         cursor.skip(1);
     }
-    alternates(model, compact, &mut cursor, buf);
+    alternates(model, ui, compact, &mut cursor, buf, hits);
     particulars(model, compact, &mut cursor, buf);
-    notes_on_this_chord(model, ui, compact, &mut cursor, buf);
+    notes_on_this_chord(model, ui, compact, &mut cursor, buf, hits);
 
+    hits.field = Some(Rect {
+        height: 1.min(field_area.height),
+        ..field_area
+    });
     note_field(model, field_area, buf)
 }
 
@@ -425,7 +520,14 @@ const ALTERNATE_COLUMNS: [Column; 4] = [
 ];
 
 /// Section 01: a real table of the readings beneath the headline.
-fn alternates(model: &AppModel, compact: bool, cursor: &mut Cursor, buf: &mut Buffer) {
+fn alternates(
+    model: &AppModel,
+    ui: &UiState,
+    compact: bool,
+    cursor: &mut Cursor,
+    buf: &mut Buffer,
+    hits: &mut Hits,
+) {
     let readings = model.alternates();
     if readings.is_empty() {
         return;
@@ -455,16 +557,18 @@ fn alternates(model: &AppModel, compact: bool, cursor: &mut Cursor, buf: &mut Bu
             ])
         })
         .collect();
+    let row_count = rows.len();
     let sections = [Section { label: None, rows }];
     let table = Table {
         columns: &ALTERNATE_COLUMNS,
         sections: &sections,
         head_rule: RuleWeight::Rule,
-        first_row: 0,
+        first_row: ui.scroll.alternates.min(row_count.saturating_sub(1)),
         selected: None,
     };
     let area = cursor.take(table.full_height());
     table.render(area, buf);
+    hits.scroll_areas.push((area, ScrollTarget::Alternates));
     if !compact {
         cursor.skip(1);
     }
@@ -516,6 +620,7 @@ fn notes_on_this_chord(
     compact: bool,
     cursor: &mut Cursor,
     buf: &mut Buffer,
+    hits: &mut Hits,
 ) {
     let notes = model.notes_for_displayed_chord();
     let head = cursor.take(push::section_head_height(compact));
@@ -550,11 +655,20 @@ fn notes_on_this_chord(
         columns: &NOTE_COLUMNS,
         sections: &sections,
         head_rule: RuleWeight::Rule,
-        first_row: scroll_to(selected, visible.saturating_sub(2) as usize),
+        first_row: scroll_to(selected, visible.saturating_sub(2) as usize)
+            .max(ui.scroll.notes)
+            .min(notes.len().saturating_sub(1)),
         selected,
     };
     let area = cursor.take(table.full_height());
-    table.render(area, buf);
+    let drawn = table.render(area, buf);
+    hits.scroll_areas.push((area, ScrollTarget::Notes));
+    for row in drawn {
+        hits.note_rows.push((row.area, row.index));
+        if let Some(cell) = row.cells.last() {
+            hits.delete_cells.push((*cell, row.index));
+        }
+    }
 }
 
 /// The first row to draw so that `selected` is inside `visible` rows.
@@ -618,7 +732,14 @@ const ALL_NOTE_COLUMNS: [Column; 4] = [
 /// Every note, grouped under the chord it belongs to. The gutter carries the
 /// chord's headline as the engine names it today; the subhead is the stored
 /// key.
-fn all_notes(model: &AppModel, ui: &UiState, compact: bool, mut cursor: Cursor, buf: &mut Buffer) {
+fn all_notes(
+    model: &AppModel,
+    ui: &UiState,
+    compact: bool,
+    mut cursor: Cursor,
+    buf: &mut Buffer,
+    hits: &mut Hits,
+) {
     let groups = model.note_groups();
     if groups.is_empty() {
         let area = cursor.take(1);
@@ -644,16 +765,20 @@ fn all_notes(model: &AppModel, ui: &UiState, compact: bool, mut cursor: Cursor, 
     let mut note_ordinal = 0usize;
     let mut table_row = 0usize;
     let mut selected_row = None;
+    // Table row index -> note ordinal, for the rows that are notes.
+    let mut ordinal_of_row: Vec<Option<usize>> = Vec::new();
     let sections: Vec<Section> = groups
         .iter()
         .map(|group| {
             let mut rows = vec![TableRow::Subhead(group.key.raw().to_string())];
+            ordinal_of_row.push(None);
             table_row += 1;
             for note in &group.notes {
                 let is_selected = selected_note == Some(note_ordinal);
                 if is_selected {
                     selected_row = Some(table_row);
                 }
+                ordinal_of_row.push(Some(note_ordinal));
                 rows.push(TableRow::Cells(vec![
                     Line::from(push::content(&note.text)),
                     Line::from(push::meta(&note.spelling_when_written)),
@@ -682,11 +807,23 @@ fn all_notes(model: &AppModel, ui: &UiState, compact: bool, mut cursor: Cursor, 
         first_row: scroll_to(
             selected_row,
             visible.saturating_sub(1 + head_rule.height()) as usize,
-        ),
+        )
+        .max(ui.scroll.all_notes)
+        .min(table_row.saturating_sub(1)),
         selected: selected_row,
     };
     let area = cursor.take(table.full_height());
-    table.render(area, buf);
+    let drawn = table.render(area, buf);
+    hits.scroll_areas.push((area, ScrollTarget::AllNotes));
+    for row in drawn {
+        let Some(Some(ordinal)) = ordinal_of_row.get(row.index) else {
+            continue;
+        };
+        hits.note_rows.push((row.area, *ordinal));
+        if let Some(cell) = row.cells.last() {
+            hits.delete_cells.push((*cell, *ordinal));
+        }
+    }
 }
 
 /// How many notes the keys can select on `screen`.

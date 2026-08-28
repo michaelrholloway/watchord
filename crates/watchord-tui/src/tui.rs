@@ -1,8 +1,9 @@
 //! The event loop and the terminal it owns.
 //!
-//! One loop: key events from crossterm and model events through
+//! One loop: key and mouse events from crossterm and model events through
 //! [`AppModel::poll`], on a 50 ms tick. The terminal is put back — alternate
-//! screen off, raw mode off, cursor shown — on `q`, on Ctrl-C, and on a panic,
+//! screen off, raw mode off, mouse capture off, cursor shown — on `q`, on
+//! Ctrl-C, and on a panic,
 //! because a chord displayer that leaves the shell unreadable is worse than one
 //! that crashed.
 
@@ -10,7 +11,10 @@ use std::io::{self, Stdout, Write};
 use std::panic;
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+    KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -19,7 +23,7 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use watchord_model::{AppModel, Screen};
 
-use crate::screens::{self, UiState};
+use crate::screens::{self, Hits, ScrollTarget, UiState};
 
 /// One tick of the loop: how long a key wait blocks before the model is polled.
 const TICK: Duration = Duration::from_millis(50);
@@ -32,7 +36,12 @@ pub const PANIC_TEST_VAR: &str = "WATCHORD_PANIC_TEST";
 pub fn restore() {
     let _ = disable_raw_mode();
     let mut stdout = io::stdout();
-    let _ = execute!(stdout, LeaveAlternateScreen, crossterm::cursor::Show);
+    let _ = execute!(
+        stdout,
+        DisableMouseCapture,
+        LeaveAlternateScreen,
+        crossterm::cursor::Show
+    );
     let _ = stdout.flush();
 }
 
@@ -42,7 +51,7 @@ struct Guard;
 impl Guard {
     fn enter() -> io::Result<Self> {
         enable_raw_mode()?;
-        execute!(io::stdout(), EnterAlternateScreen)?;
+        execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
         Ok(Guard)
     }
 }
@@ -53,10 +62,20 @@ impl Drop for Guard {
     }
 }
 
-/// What one key asked for.
+/// What one key or click asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
     Quit,
+    /// A tab was clicked.
+    SwitchTo(Screen),
+    /// A note row was clicked: select it.
+    Select(usize),
+    /// A row's `delete` was clicked: select it and delete it.
+    Delete(usize),
+    /// The note field was clicked: the keys go to it, so the selection goes.
+    FocusField,
+    /// The wheel turned over a table.
+    Scroll(ScrollTarget, i32),
     NextScreen,
     PreviousScreen,
     SelectUp,
@@ -95,6 +114,34 @@ fn action_for(key: KeyEvent, draft_is_empty: bool, has_selection: bool) -> Actio
     }
 }
 
+/// Reads a click or a wheel turn against where the last frame put things.
+/// Anything the frame did not lay out is nothing.
+fn action_for_mouse(mouse: MouseEvent, hits: &Hits) -> Action {
+    let (x, y) = (mouse.column, mouse.row);
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            if let Some(screen) = hits.tab_at(x, y) {
+                Action::SwitchTo(screen)
+            } else if let Some(ordinal) = hits.delete_at(x, y) {
+                Action::Delete(ordinal)
+            } else if let Some(ordinal) = hits.note_row_at(x, y) {
+                Action::Select(ordinal)
+            } else if hits.field_at(x, y) {
+                Action::FocusField
+            } else {
+                Action::Nothing
+            }
+        }
+        MouseEventKind::ScrollUp => hits
+            .scroll_at(x, y)
+            .map_or(Action::Nothing, |target| Action::Scroll(target, -1)),
+        MouseEventKind::ScrollDown => hits
+            .scroll_at(x, y)
+            .map_or(Action::Nothing, |target| Action::Scroll(target, 1)),
+        _ => Action::Nothing,
+    }
+}
+
 fn next_screen(screen: Screen, step: isize) -> Screen {
     let index = Screen::ALL.iter().position(|s| *s == screen).unwrap_or(0) as isize;
     let count = Screen::ALL.len() as isize;
@@ -106,6 +153,22 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
     let screen = model.screen;
     match action {
         Action::Quit => return false,
+        Action::SwitchTo(to) => model.screen = to,
+        Action::Select(ordinal) => ui.set_selected(screen, Some(ordinal)),
+        Action::Delete(ordinal) => {
+            ui.set_selected(screen, Some(ordinal));
+            return apply(Action::DeleteSelected, model, ui);
+        }
+        Action::FocusField => ui.set_selected(screen, None),
+        Action::Scroll(target, delta) => {
+            let rows = ui.scroll.get(target);
+            let next = if delta < 0 {
+                rows.saturating_sub(delta.unsigned_abs() as usize)
+            } else {
+                rows.saturating_add(delta as usize)
+            };
+            ui.scroll.set(target, next);
+        }
         Action::NextScreen => model.screen = next_screen(screen, 1),
         Action::PreviousScreen => model.screen = next_screen(screen, -1),
         Action::SelectUp | Action::SelectDown => {
@@ -157,12 +220,13 @@ pub fn run(mut model: AppModel) -> io::Result<()> {
     let mut terminal: Terminal<CrosstermBackend<Stdout>> =
         Terminal::new(CrosstermBackend::new(io::stdout()))?;
     let mut ui = UiState::default();
+    let mut hits = Hits::default();
     let panic_test = std::env::var_os(PANIC_TEST_VAR).is_some();
 
     model.start();
     let mut frames: u64 = 0;
     loop {
-        terminal.draw(|frame| screens::draw(frame, &model, &ui))?;
+        terminal.draw(|frame| hits = screens::draw(frame, &model, &ui))?;
         frames += 1;
         if panic_test && frames > 2 {
             panic!("{PANIC_TEST_VAR} is set: proving the terminal restores");
@@ -176,6 +240,12 @@ pub fn run(mut model: AppModel) -> io::Result<()> {
                         model.draft_note_text.is_empty(),
                         ui.selected(model.screen).is_some(),
                     );
+                    if !apply(action, &mut model, &mut ui) {
+                        break;
+                    }
+                }
+                Event::Mouse(mouse) => {
+                    let action = action_for_mouse(mouse, &hits);
                     if !apply(action, &mut model, &mut ui) {
                         break;
                     }
@@ -196,10 +266,132 @@ pub fn run(mut model: AppModel) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::time::UNIX_EPOCH;
+
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Rect;
+    use watchord_core::{ChordNote, SoundingSet, SpellingOrigin};
+    use watchord_model::fakes::{
+        InMemoryNoteStore, ScriptedSoundingSetSource, StubAlternate, StubChordNaming,
+    };
+
     use super::*;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    /// A C6 with two notes on it, played and settled.
+    fn model_with_notes() -> AppModel {
+        let c6 = SoundingSet::new([60, 64, 67, 69]);
+        let naming = StubChordNaming::new();
+        naming.stub(
+            &c6,
+            StubChordNaming::naming(
+                &c6,
+                "C6",
+                "C major 6",
+                vec![StubAlternate::new(
+                    "Am7",
+                    SpellingOrigin::ReRooted,
+                    "A minor 7",
+                )],
+            ),
+        );
+        let store = InMemoryNoteStore::new(vec![
+            ChordNote::new("first", c6.key(), "C6", "older", UNIX_EPOCH),
+            ChordNote::new(
+                "second",
+                c6.key(),
+                "C6",
+                "newer",
+                UNIX_EPOCH + Duration::from_secs(60),
+            ),
+        ]);
+        let mut model = AppModel::new(
+            Arc::new(naming),
+            Box::new(ScriptedSoundingSetSource::new(vec![c6])),
+            Arc::new(store),
+        );
+        model.start();
+        while model.wait(Duration::from_millis(50)) {}
+        model
+    }
+
+    /// One frame at 120x40, returning what it laid out for the mouse.
+    fn frame(model: &AppModel, ui: &UiState) -> Hits {
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).expect("a test terminal");
+        let mut hits = Hits::default();
+        terminal
+            .draw(|frame| hits = screens::draw(frame, model, ui))
+            .expect("a frame");
+        hits
+    }
+
+    fn click(x: u16, y: u16) -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: x,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    fn middle(rect: Rect) -> (u16, u16) {
+        (rect.x + rect.width / 2, rect.y)
+    }
+
+    #[test]
+    fn clicking_the_all_notes_tab_switches_screens() {
+        let mut model = model_with_notes();
+        let mut ui = UiState::default();
+        let hits = frame(&model, &ui);
+        let (rect, _) = hits
+            .tabs
+            .iter()
+            .find(|(_, screen)| *screen == Screen::AllNotes)
+            .expect("an All Notes tab");
+        let (x, y) = middle(*rect);
+
+        let action = action_for_mouse(click(x, y), &hits);
+        assert_eq!(action, Action::SwitchTo(Screen::AllNotes));
+        apply(action, &mut model, &mut ui);
+        assert_eq!(model.screen, Screen::AllNotes);
+
+        // The control: a click on the page ground does nothing.
+        assert_eq!(action_for_mouse(click(x, 39), &hits), Action::Nothing);
+    }
+
+    #[test]
+    fn clicking_delete_on_a_row_deletes_that_note() {
+        let mut model = model_with_notes();
+        let mut ui = UiState::default();
+        let hits = frame(&model, &ui);
+        assert_eq!(model.notes_for_displayed_chord().len(), 2);
+        // Row 0 is the newest note, "newer".
+        let (cell, ordinal) = hits.delete_cells[0];
+        assert_eq!(ordinal, 0);
+        let (x, y) = (cell.x + cell.width - 1, cell.y);
+
+        let action = action_for_mouse(click(x, y), &hits);
+        assert_eq!(action, Action::Delete(0));
+        apply(action, &mut model, &mut ui);
+        let left: Vec<&str> = model
+            .notes_for_displayed_chord()
+            .iter()
+            .map(|n| n.text.as_str())
+            .collect();
+        assert_eq!(left, ["older"]);
+
+        // The control: the same row's text cell selects rather than deletes.
+        let hits = frame(&model, &ui);
+        let (row, _) = hits.note_rows[0];
+        assert_eq!(
+            action_for_mouse(click(row.x + 3, row.y), &hits),
+            Action::Select(0)
+        );
     }
 
     #[test]

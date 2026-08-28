@@ -11,5 +11,5 @@ pub mod screens;
 pub mod tui;
 pub mod when;
 
-pub use screens::{UiState, draw, draw_into};
+pub use screens::{Drawn, Hits, ScrollTarget, UiState, draw, draw_into};
 pub use tui::{PANIC_TEST_VAR, restore, run};
