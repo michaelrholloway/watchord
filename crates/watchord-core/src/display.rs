@@ -62,7 +62,11 @@ impl ReadingDisplay {
     }
 
     pub fn id(&self) -> String {
-        format!("{}{}", self.name, self.approximation.as_deref().unwrap_or(""))
+        format!(
+            "{}{}",
+            self.name,
+            self.approximation.as_deref().unwrap_or("")
+        )
     }
 
     /// True when the engine does not stand behind this name.
@@ -181,7 +185,11 @@ impl NoteName {
     pub fn note(midi_note: u8) -> String {
         let value = midi_note as i32;
         let octave = value / 12 - (60 / 12 - Self::MIDDLE_C_OCTAVE);
-        format!("{}{}", Self::PITCH_CLASS_NAMES[(value % 12) as usize], octave)
+        format!(
+            "{}{}",
+            Self::PITCH_CLASS_NAMES[(value % 12) as usize],
+            octave
+        )
     }
 
     /// The whole sounding set as one readable row: `"C3  E3  G3  A3"`.

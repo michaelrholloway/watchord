@@ -217,6 +217,11 @@ impl ChordAnalysis {
     }
 
     pub fn silence() -> Self {
-        ChordAnalysis::new(SoundingSet::silent(), None, vec![], Some(DeclineReason::Silent))
+        ChordAnalysis::new(
+            SoundingSet::silent(),
+            None,
+            vec![],
+            Some(DeclineReason::Silent),
+        )
     }
 }

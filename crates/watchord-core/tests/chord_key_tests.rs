@@ -44,13 +44,13 @@ fn round_trips_through_raw() {
 #[test]
 fn rejects_every_non_canonical_form() {
     for raw in [
-        "",        // empty
-        "0.4.7.",  // trailing separator
-        "0,4,7",   // wrong separator
-        "0.4.12",  // out of range
-        "0.4.-1",  // negative
-        "7.4.0",   // not ascending
-        "0.4.4",   // duplicate
+        "",         // empty
+        "0.4.7.",   // trailing separator
+        "0,4,7",    // wrong separator
+        "0.4.12",   // out of range
+        "0.4.-1",   // negative
+        "7.4.0",    // not ascending
+        "0.4.4",    // duplicate
         "0.four.7", // not a number
         "abc",
     ] {

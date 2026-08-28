@@ -45,7 +45,9 @@ fn enharmonics_collapse() {
     // MIDI 61 is one pitch class, not two, and no amount of context recovers
     // which letter was meant.
     assert_eq!(PitchClass::from_midi_note(61), PitchClass::new(1));
-    let set: BTreeSet<PitchClass> = [PitchClass::new(1), PitchClass::new(1)].into_iter().collect();
+    let set: BTreeSet<PitchClass> = [PitchClass::new(1), PitchClass::new(1)]
+        .into_iter()
+        .collect();
     assert_eq!(set.len(), 1);
 }
 

@@ -17,7 +17,6 @@
 
 pub mod iso8601;
 
-use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
@@ -26,9 +25,7 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use watchord_core::{ChordKey, ChordNote, NoteStoring};
-
-type BoxError = Box<dyn Error + Send + Sync>;
+use watchord_core::{ChordKey, ChordNote, NoteStoring, StoreError};
 
 /// Something the store refused to do, rather than do badly.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -52,6 +49,20 @@ pub enum NotesStoreError {
     /// top of notes that are merely out of reach.
     #[error("Could not read the notes store at {}: {reason}.", path.display())]
     ReadFailed { path: PathBuf, reason: String },
+}
+
+/// The seam's error is the coarser one: a refusal to write an unreadable key is
+/// reported as `Corrupt` (the key is not the schema), and a failed read or
+/// write as `Io`, each carrying this crate's fuller sentence.
+impl From<NotesStoreError> for StoreError {
+    fn from(error: NotesStoreError) -> Self {
+        match error {
+            NotesStoreError::UnusableChordKey(_) => StoreError::Corrupt(error.to_string()),
+            NotesStoreError::WriteFailed { .. } | NotesStoreError::ReadFailed { .. } => {
+                StoreError::Io(error.to_string())
+            }
+        }
+    }
 }
 
 /// The store's filename wherever it lives.
@@ -310,25 +321,23 @@ impl JsonNotesStore {
 }
 
 impl NoteStoring for JsonNotesStore {
-    fn notes(&self, key: &ChordKey) -> Result<Vec<ChordNote>, BoxError> {
+    fn notes(&self, key: &ChordKey) -> Result<Vec<ChordNote>, StoreError> {
         let mut state = self.lock();
         let notes = self.loaded_notes(&mut state)?;
         Ok(notes.into_iter().filter(|n| n.chord_key == *key).collect())
     }
 
-    fn all_notes(&self) -> Result<Vec<ChordNote>, BoxError> {
+    fn all_notes(&self) -> Result<Vec<ChordNote>, StoreError> {
         let mut state = self.lock();
         Ok(self.loaded_notes(&mut state)?)
     }
 
-    fn add(&self, text: &str, key: &ChordKey, spelling: &str) -> Result<ChordNote, BoxError> {
+    fn add(&self, text: &str, key: &ChordKey, spelling: &str) -> Result<ChordNote, StoreError> {
         // Refused before anything is written. A key that does not survive a
         // round trip through `ChordKey::parse` decodes as a skipped entry on the
         // way back in, so the note would be written now and lost forever after.
         if ChordKey::parse(key.raw()).is_none() {
-            return Err(Box::new(NotesStoreError::UnusableChordKey(
-                key.raw().to_string(),
-            )));
+            return Err(NotesStoreError::UnusableChordKey(key.raw().to_string()).into());
         }
         let note = ChordNote::new(
             uuid::Uuid::new_v4().to_string().to_uppercase(),
@@ -344,7 +353,7 @@ impl NoteStoring for JsonNotesStore {
         Ok(note)
     }
 
-    fn delete(&self, id: &str) -> Result<(), BoxError> {
+    fn delete(&self, id: &str) -> Result<(), StoreError> {
         let mut state = self.lock();
         let mut notes = self.loaded_notes(&mut state)?;
         let Some(index) = notes.iter().position(|n| n.id == id) else {

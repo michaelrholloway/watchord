@@ -9,8 +9,6 @@
 //! takes ownership of its source and a test still needs to drive it afterwards.
 
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -18,35 +16,14 @@ use std::time::SystemTime;
 use watchord_core::tuning;
 use watchord_core::{
     ChordAnalysis, ChordFit, ChordKey, ChordNaming, ChordNote, ChordReading, ChordRoot,
-    DeclineReason, NoteStoring, PitchClass, SoundingSet, SoundingSetSource, SpellingOrigin,
+    DeclineReason, NoteStoring, PitchClass, SoundingSet, SoundingSetSource, SourceError,
+    SpellingOrigin, StoreError,
 };
 
-type BoxError = Box<dyn Error + Send + Sync>;
-
-/// A plain error with a message, for exercising the failure lines.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FakeError(pub String);
-
-impl fmt::Display for FakeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl Error for FakeError {}
-
-/// Mirrors the store's `unusable_chord_key` refusal without importing it — the
-/// model sees `NoteStoring` and nothing else.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct UnusableChordKey;
-
-impl fmt::Display for UnusableChordKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("that chord cannot be saved against")
-    }
-}
-
-impl Error for UnusableChordKey {}
+/// What the real store says when asked to save against the empty chord key.
+/// Mirrored here without importing the store crate — the model sees
+/// `NoteStoring` and nothing else.
+pub const UNUSABLE_CHORD_KEY: &str = "that chord cannot be saved against";
 
 // MARK: - ScriptedSoundingSetSource
 
@@ -152,10 +129,10 @@ impl SoundingSetSource for ScriptedSoundingSetSource {
             .unwrap_or_else(|| mpsc::channel().1)
     }
 
-    fn start(&mut self) -> Result<(), BoxError> {
+    fn start(&mut self) -> Result<(), SourceError> {
         *lock(&self.inner.started) = true;
         if let Some(message) = &self.inner.start_error {
-            return Err(Box::new(FakeError(message.clone())));
+            return Err(SourceError::CouldNotStart(message.clone()));
         }
         for sounding in &self.inner.script {
             self.send(sounding.clone());
@@ -218,9 +195,9 @@ impl InMemoryNoteStore {
         *lock(&self.inner.add_calls)
     }
 
-    fn all(&self) -> Result<Vec<ChordNote>, BoxError> {
+    fn all(&self) -> Result<Vec<ChordNote>, StoreError> {
         if let Some(message) = &self.inner.failure {
-            return Err(Box::new(FakeError(message.clone())));
+            return Err(StoreError::Io(message.clone()));
         }
         let mut notes = lock(&self.inner.storage).clone();
         notes.sort_by_key(|n| std::cmp::Reverse(n.created_at));
@@ -229,7 +206,7 @@ impl InMemoryNoteStore {
 }
 
 impl NoteStoring for InMemoryNoteStore {
-    fn notes(&self, key: &ChordKey) -> Result<Vec<ChordNote>, BoxError> {
+    fn notes(&self, key: &ChordKey) -> Result<Vec<ChordNote>, StoreError> {
         Ok(self
             .all()?
             .into_iter()
@@ -237,19 +214,19 @@ impl NoteStoring for InMemoryNoteStore {
             .collect())
     }
 
-    fn all_notes(&self) -> Result<Vec<ChordNote>, BoxError> {
+    fn all_notes(&self) -> Result<Vec<ChordNote>, StoreError> {
         self.all()
     }
 
-    fn add(&self, text: &str, key: &ChordKey, spelling: &str) -> Result<ChordNote, BoxError> {
+    fn add(&self, text: &str, key: &ChordKey, spelling: &str) -> Result<ChordNote, StoreError> {
         *lock(&self.inner.add_calls) += 1;
         // What the real store does, so the UI's guard is tested against the
         // real rule rather than a permissive fake.
         if key.is_empty() {
-            return Err(Box::new(UnusableChordKey));
+            return Err(StoreError::Corrupt(UNUSABLE_CHORD_KEY.to_string()));
         }
         if let Some(message) = &self.inner.failure {
-            return Err(Box::new(FakeError(message.clone())));
+            return Err(StoreError::Io(message.clone()));
         }
         let note = ChordNote::new(
             uuid::Uuid::new_v4().to_string().to_uppercase(),
@@ -262,9 +239,9 @@ impl NoteStoring for InMemoryNoteStore {
         Ok(note)
     }
 
-    fn delete(&self, id: &str) -> Result<(), BoxError> {
+    fn delete(&self, id: &str) -> Result<(), StoreError> {
         if let Some(message) = &self.inner.failure {
-            return Err(Box::new(FakeError(message.clone())));
+            return Err(StoreError::Io(message.clone()));
         }
         lock(&self.inner.storage).retain(|n| n.id != id);
         Ok(())
