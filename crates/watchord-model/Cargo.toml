@@ -1,6 +1,6 @@
 [package]
 name = "watchord-model"
-description = "watchord app model (stub)"
+description = "watchord app model: the UI-independent state machine, and the fakes for its seams"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,3 +9,7 @@ repository.workspace = true
 
 [dependencies]
 watchord-core = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+uuid = { workspace = true }

@@ -26,3 +26,6 @@ watchord-model = { path = "crates/watchord-model" }
 watchord-tui = { path = "crates/watchord-tui" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+directories = "6"
+midir = "0.11"
