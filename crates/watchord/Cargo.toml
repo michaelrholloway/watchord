@@ -1,0 +1,16 @@
+[package]
+name = "watchord"
+description = "watchord: a terminal app that watches MIDI and names the chord being played"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+watchord-core = { workspace = true }
+watchord-engine = { workspace = true }
+watchord-store = { workspace = true }
+watchord-midi = { workspace = true }
+watchord-model = { workspace = true }
+watchord-tui = { workspace = true }

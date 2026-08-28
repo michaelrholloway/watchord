@@ -1,0 +1,11 @@
+[package]
+name = "watchord-store"
+description = "watchord note storing (stub)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+watchord-core = { workspace = true }

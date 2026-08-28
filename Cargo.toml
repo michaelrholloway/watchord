@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/watchord-core",
+    "crates/watchord-engine",
+    "crates/watchord-store",
+    "crates/watchord-midi",
+    "crates/watchord-model",
+    "crates/watchord-tui",
+    "crates/watchord",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/michaelrholloway/watchord"
+
+[workspace.dependencies]
+watchord-core = { path = "crates/watchord-core" }
+watchord-engine = { path = "crates/watchord-engine" }
+watchord-store = { path = "crates/watchord-store" }
+watchord-midi = { path = "crates/watchord-midi" }
+watchord-model = { path = "crates/watchord-model" }
+watchord-tui = { path = "crates/watchord-tui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -1,0 +1,18 @@
+[package]
+name = "watchord-core"
+description = "watchord core types and seams: pitch class, sounding set, chord key, reading, fit, analysis, tuning"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+watchord-core = { path = ".", features = ["serde"] }
+
+[features]
+serde = ["dep:serde"]
