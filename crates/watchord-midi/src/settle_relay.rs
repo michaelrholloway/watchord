@@ -15,6 +15,8 @@ use watchord_core::tuning;
 
 use crate::{HeldNoteTracker, MidiEvent};
 
+/// A tracker plus the settle window over it: events go in, and a sounding set
+/// comes out only once it has been stable for the whole interval.
 #[derive(Clone, Debug)]
 pub struct SettleRelay {
     tracker: HeldNoteTracker,
@@ -31,6 +33,7 @@ impl Default for SettleRelay {
 }
 
 impl SettleRelay {
+    /// A relay with the given settle window and nothing held.
     pub fn new(settle: Duration) -> Self {
         SettleRelay {
             tracker: HeldNoteTracker::new(),

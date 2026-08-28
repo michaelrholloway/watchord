@@ -42,13 +42,23 @@ pub enum NotesStoreError {
     /// A write could not be completed. The previous contents of the store are
     /// untouched; nothing was overwritten.
     #[error("Could not write the notes store at {}: {reason}. The previous notes are intact.", path.display())]
-    WriteFailed { path: PathBuf, reason: String },
+    WriteFailed {
+        /// The file that was being written.
+        path: PathBuf,
+        /// The OS's own words.
+        reason: String,
+    },
 
     /// The file is there and could not be read — a permissions problem, a bad
     /// volume. Pretending the store is empty would invite a fresh one over the
     /// top of notes that are merely out of reach.
     #[error("Could not read the notes store at {}: {reason}.", path.display())]
-    ReadFailed { path: PathBuf, reason: String },
+    ReadFailed {
+        /// The file that was being read.
+        path: PathBuf,
+        /// The OS's own words.
+        reason: String,
+    },
 }
 
 /// The seam's error is the coarser one: a refusal to write an unreadable key is
@@ -104,6 +114,8 @@ impl JsonNotesStore {
         Self::with_clock(path, Box::new(SystemTime::now))
     }
 
+    /// A store at `path` whose new notes are stamped by `now` instead of the
+    /// wall clock. For tests that need a known order.
     pub fn with_clock(path: impl Into<PathBuf>, now: Clock) -> Self {
         JsonNotesStore {
             path: path.into(),
@@ -166,7 +178,7 @@ impl JsonNotesStore {
             // We understood some of a file we are no longer keeping, so write
             // those notes forward into a file this build owns. Best effort: a
             // read-only volume must not turn a read into a failure.
-            let _ = self.persist(state, &ordered);
+            let _ = self.persist(state, ordered.clone());
         }
         Ok(ordered)
     }
@@ -188,8 +200,8 @@ impl JsonNotesStore {
     // MARK: - Writing
 
     /// The caller holds the lock.
-    fn persist(&self, state: &mut State, notes: &[ChordNote]) -> Result<(), NotesStoreError> {
-        let ordered = newest_first(notes.to_vec());
+    fn persist(&self, state: &mut State, notes: Vec<ChordNote>) -> Result<(), NotesStoreError> {
+        let ordered = newest_first(notes);
         if state.must_preserve_before_writing {
             // A partially-readable file is still sitting at `path` and is about
             // to be replaced. Copy it aside first.
@@ -349,7 +361,7 @@ impl NoteStoring for JsonNotesStore {
         let mut state = self.lock();
         let mut notes = self.loaded_notes(&mut state)?;
         notes.push(note.clone());
-        self.persist(&mut state, &notes)?;
+        self.persist(&mut state, notes)?;
         Ok(note)
     }
 
@@ -362,7 +374,7 @@ impl NoteStoring for JsonNotesStore {
             return Ok(());
         };
         notes.remove(index);
-        self.persist(&mut state, &notes)?;
+        self.persist(&mut state, notes)?;
         Ok(())
     }
 }
@@ -472,7 +484,7 @@ impl LoadedStore {
 /// count; anything that stops us reading the envelope itself — not JSON, not an
 /// object, no integer `version` — is an unreadable file.
 fn decode_store(bytes: &[u8]) -> LoadedStore {
-    let Ok(Value::Object(root)) = serde_json::from_slice::<Value>(bytes) else {
+    let Ok(Value::Object(mut root)) = serde_json::from_slice::<Value>(bytes) else {
         return LoadedStore::unreadable();
     };
     let Some(version) = root.get("version").and_then(Value::as_u64) else {
@@ -480,9 +492,9 @@ fn decode_store(bytes: &[u8]) -> LoadedStore {
     };
     // A file with no `notes` array at all is empty, not broken — that is a
     // store nothing has been written to yet.
-    let entries: Vec<Value> = match root.get("notes") {
+    let entries: Vec<Value> = match root.remove("notes") {
         None | Some(Value::Null) => Vec::new(),
-        Some(Value::Array(entries)) => entries.clone(),
+        Some(Value::Array(entries)) => entries,
         Some(_) => return LoadedStore::unreadable(),
     };
     let total = entries.len();

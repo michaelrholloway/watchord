@@ -40,18 +40,19 @@ pub fn parse(text: &str) -> Option<SystemTime> {
         }
         slice.parse().ok()
     };
-    let expect = |at: usize, ch: u8| -> Option<()> { (bytes.get(at) == Some(&ch)).then_some(()) };
+    let expect_byte =
+        |at: usize, ch: u8| -> Option<()> { (bytes.get(at) == Some(&ch)).then_some(()) };
 
     let year = digits(0, 4)?;
-    expect(4, b'-')?;
+    expect_byte(4, b'-')?;
     let month = digits(5, 2)?;
-    expect(7, b'-')?;
+    expect_byte(7, b'-')?;
     let day = digits(8, 2)?;
-    expect(10, b'T')?;
+    expect_byte(10, b'T')?;
     let hour = digits(11, 2)?;
-    expect(13, b':')?;
+    expect_byte(13, b':')?;
     let minute = digits(14, 2)?;
-    expect(16, b':')?;
+    expect_byte(16, b':')?;
     let second = digits(17, 2)?;
     if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
@@ -75,7 +76,7 @@ pub fn parse(text: &str) -> Option<SystemTime> {
         Some(b'Z') if rest + 1 == bytes.len() => 0,
         Some(sign @ (b'+' | b'-')) if rest + 6 == bytes.len() => {
             let oh = digits(rest + 1, 2)?;
-            expect(rest + 3, b':')?;
+            expect_byte(rest + 3, b':')?;
             let om = digits(rest + 4, 2)?;
             let magnitude = oh * 3600 + om * 60;
             if *sign == b'+' { magnitude } else { -magnitude }

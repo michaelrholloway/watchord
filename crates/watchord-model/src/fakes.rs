@@ -57,6 +57,7 @@ impl Default for ScriptedSoundingSetSource {
 }
 
 impl ScriptedSoundingSetSource {
+    /// A source that pushes `script` in order the moment it starts.
     pub fn new(script: Vec<SoundingSet>) -> Self {
         Self::build(script, None)
     }
@@ -84,10 +85,12 @@ impl ScriptedSoundingSetSource {
         }
     }
 
+    /// Whether `start()` has been called.
     pub fn did_start(&self) -> bool {
         *lock(&self.inner.started)
     }
 
+    /// Whether `stop()` has been called.
     pub fn did_stop(&self) -> bool {
         *lock(&self.inner.stopped)
     }
@@ -99,6 +102,7 @@ impl ScriptedSoundingSetSource {
         }
     }
 
+    /// [`ScriptedSoundingSetSource::send`] from MIDI note numbers.
     pub fn send_midi_notes(&self, notes: impl IntoIterator<Item = u8>) {
         self.send(SoundingSet::new(notes));
     }
@@ -169,6 +173,7 @@ impl Default for InMemoryNoteStore {
 }
 
 impl InMemoryNoteStore {
+    /// A store holding `seed`, in any order.
     pub fn new(seed: Vec<ChordNote>) -> Self {
         Self::build(seed, None)
     }
@@ -261,6 +266,7 @@ pub struct StubChordNaming {
 }
 
 impl StubChordNaming {
+    /// An empty table: every set is declined until [`StubChordNaming::stub`].
     pub fn new() -> Self {
         Self::default()
     }
@@ -382,15 +388,20 @@ impl ChordNaming for StubChordNaming {
 /// One alternate reading for `StubChordNaming::naming`.
 #[derive(Clone, Debug)]
 pub struct StubAlternate {
+    /// The name as written, e.g. `Am7`.
     pub display: String,
+    /// Which axis this reading sits on.
     pub origin: SpellingOrigin,
+    /// The name said aloud.
     pub spoken: String,
+    /// How well it fits the keys; `Exact` unless [`StubAlternate::with_fit`].
     pub fit: ChordFit,
     /// The pitch classes this reading claims; `None` means "the keys sounding".
     pub claiming: Option<Vec<i32>>,
 }
 
 impl StubAlternate {
+    /// An exact alternate that claims the sounding keys.
     pub fn new(display: &str, origin: SpellingOrigin, spoken: &str) -> Self {
         StubAlternate {
             display: display.to_string(),
@@ -401,6 +412,7 @@ impl StubAlternate {
         }
     }
 
+    /// The same alternate with a fit other than exact, claiming `claiming`.
     pub fn with_fit(mut self, fit: ChordFit, claiming: &[i32]) -> Self {
         self.fit = fit;
         self.claiming = Some(claiming.to_vec());

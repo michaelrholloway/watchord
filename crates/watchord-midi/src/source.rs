@@ -18,7 +18,8 @@
 //!
 //! `stop()` closes a channel the watch thread waits on, so it ends within one
 //! poll and takes every connection with it; the relay thread then sees its
-//! channel close and ends too, closing the sounding-set channel behind it.
+//! channel close and ends too. `stop()` then drops its own senders, so the
+//! sounding-set and input-name receivers disconnect and a consumer's loop ends.
 
 use std::collections::BTreeMap;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -42,13 +43,19 @@ struct Running {
     relay: JoinHandle<()>,
 }
 
+/// The real input: every MIDI port on the machine, or the ones whose name
+/// contains `--input`'s text. See the module docs for the threads it runs.
 pub struct MidiSource {
     client_name: String,
     /// `--input <name>`: connect only to inputs whose name contains this,
     /// case-insensitively. `None` connects to every input.
     filter: Option<String>,
     settle: Duration,
+    /// The sounding-set channel. The sender is the one the relay thread clones;
+    /// the receiver is handed out once by `sounding_sets()`. `stop()` replaces
+    /// the pair, which is what closes the consumer's end.
     sounding: (Sender<SoundingSet>, Option<Receiver<SoundingSet>>),
+    /// The connected-inputs channel, on the same terms.
     inputs: (Sender<Vec<String>>, Option<Receiver<Vec<String>>>),
     running: Option<Running>,
 }
@@ -65,6 +72,8 @@ impl MidiSource {
         Self::with_settle(filter, tuning::SETTLE_INTERVAL)
     }
 
+    /// The same, with the settle window chosen by the caller rather than
+    /// `tuning::SETTLE_INTERVAL`. For tests that cannot wait 60 ms per case.
     pub fn with_settle(filter: Option<String>, settle: Duration) -> Self {
         let sounding = mpsc::channel();
         let inputs = mpsc::channel();
@@ -153,6 +162,19 @@ impl SoundingSetSource for MidiSource {
         drop(running.stop);
         let _ = running.watch.join();
         let _ = running.relay.join();
+        // The threads held clones of the two senders and have now dropped
+        // them. Dropping the originals is what disconnects the receivers a
+        // consumer is holding — without it, a forwarding loop on the other end
+        // never sees the channel close and a quit that joins it hangs. A fresh
+        // pair takes their place so a later `start()` has somewhere to send.
+        self.sounding = {
+            let (tx, rx) = mpsc::channel();
+            (tx, Some(rx))
+        };
+        self.inputs = {
+            let (tx, rx) = mpsc::channel();
+            (tx, Some(rx))
+        };
     }
 }
 

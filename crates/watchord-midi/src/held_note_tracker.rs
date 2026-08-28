@@ -28,6 +28,7 @@ use watchord_core::tuning;
 
 use crate::MidiEvent;
 
+/// What is sounding, kept as two sets — see the module docs for why two.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HeldNoteTracker {
     /// Keys physically down.
@@ -39,6 +40,7 @@ pub struct HeldNoteTracker {
 }
 
 impl HeldNoteTracker {
+    /// Nothing held, pedal up.
     pub fn new() -> Self {
         Self::default()
     }
@@ -48,6 +50,7 @@ impl HeldNoteTracker {
         SoundingSet::new(self.held_notes())
     }
 
+    /// Whether the pedal is currently down.
     pub fn is_sustain_down(&self) -> bool {
         self.sustain_down
     }

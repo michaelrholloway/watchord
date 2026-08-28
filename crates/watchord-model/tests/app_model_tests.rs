@@ -223,7 +223,7 @@ mod decline_tests {
     use super::*;
 
     #[test]
-    fn single_note() {
+    fn a_single_note_is_declined_and_still_shows_its_name() {
         let mut f = Fixture::new();
         f.model.receive(&SoundingSet::new([60]));
 
@@ -241,7 +241,7 @@ mod decline_tests {
     }
 
     #[test]
-    fn too_many_notes() {
+    fn too_many_notes_are_declined_with_the_count_in_the_reason() {
         let mut f = Fixture::new();
         f.model.receive(&too_many());
 
@@ -252,7 +252,7 @@ mod decline_tests {
     }
 
     #[test]
-    fn nothing_nameable() {
+    fn a_set_with_no_honest_reading_is_declined_in_words() {
         let mut f = Fixture::new();
         // Two pitch classes: inside the floor and ceiling, so the stub falls
         // through to "no honest reading" rather than a count-based decline.

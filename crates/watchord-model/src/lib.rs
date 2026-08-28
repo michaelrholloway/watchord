@@ -26,7 +26,9 @@ use watchord_core::{
 /// Which screen is showing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Screen {
+    /// The live chord, its alternates, its notes, and the note field.
     NowPlaying,
+    /// Every note ever written, grouped by chord.
     AllNotes,
 }
 
@@ -34,6 +36,7 @@ impl Screen {
     /// Every screen, in the order the skin cycles them.
     pub const ALL: [Screen; 2] = [Screen::NowPlaying, Screen::AllNotes];
 
+    /// The tab's label.
     pub fn title(self) -> &'static str {
         match self {
             Screen::NowPlaying => "Now Playing",
@@ -64,6 +67,7 @@ pub struct NoteGroup {
 }
 
 impl NoteGroup {
+    /// A stable identity for the group: the key's text.
     pub fn id(&self) -> &str {
         self.key.raw()
     }
@@ -135,6 +139,8 @@ pub struct AppModel {
 }
 
 impl AppModel {
+    /// A model over the three seams, opening on Now Playing with every stored
+    /// note already grouped. Does not start the input; call [`AppModel::start`].
     pub fn new(
         naming: Arc<dyn ChordNaming>,
         source: Box<dyn SoundingSetSource>,
@@ -196,6 +202,8 @@ impl AppModel {
         self.banner = Some(message.into());
     }
 
+    /// Closes the input and joins the forwarding threads. Idempotent. The
+    /// display is left as it was, so the last chord stays readable.
     pub fn stop(&mut self) {
         self.source.stop();
         if let Some(listening) = self.listening.take() {
@@ -270,9 +278,11 @@ impl AppModel {
             self.is_released = self.displayed.is_some();
             return;
         }
-        let previous_key = self.displayed.as_ref().map(|d| d.key.clone());
         let analysis = self.naming.analyze(sounding);
-        let key_changed = previous_key.as_ref() != Some(&analysis.key);
+        let key_changed = self
+            .displayed
+            .as_ref()
+            .is_none_or(|previous| previous.key != analysis.key);
         self.displayed = Some(analysis);
         self.is_released = false;
         if key_changed {
@@ -282,18 +292,22 @@ impl AppModel {
 
     // MARK: - Reading the display
 
+    /// The analysis on screen, or `None` before anything has been played.
     pub fn displayed(&self) -> Option<&ChordAnalysis> {
         self.displayed.as_ref()
     }
 
+    /// True when the keys are up and the display is holding the last chord.
     pub fn is_released(&self) -> bool {
         self.is_released
     }
 
+    /// Notes saved against the displayed chord, newest first.
     pub fn notes_for_displayed_chord(&self) -> &[ChordNote] {
         &self.notes_for_displayed_chord
     }
 
+    /// Every note, grouped by chord — the All Notes screen's rows.
     pub fn note_groups(&self) -> &[NoteGroup] {
         &self.note_groups
     }
@@ -303,14 +317,17 @@ impl AppModel {
         self.note_groups.iter().map(|g| g.notes.len()).sum()
     }
 
+    /// The error row's text, or `None` when nothing has gone wrong.
     pub fn status_message(&self) -> Option<&str> {
         self.status_message.as_deref()
     }
 
+    /// The standing line set by [`AppModel::announce`], if any.
     pub fn banner(&self) -> Option<&str> {
         self.banner.as_deref()
     }
 
+    /// The attached MIDI inputs, by display name.
     pub fn connected_inputs(&self) -> &[String] {
         &self.connected_inputs
     }
@@ -459,6 +476,8 @@ impl AppModel {
         }
     }
 
+    /// True when Enter would save something: a chord to attach to and a
+    /// draft that is not blank.
     pub fn can_commit_note(&self) -> bool {
         self.note_target_key().is_some() && !self.draft_note_text.trim().is_empty()
     }
@@ -492,6 +511,8 @@ impl AppModel {
         }
     }
 
+    /// Removes one note by id and refreshes both screens. A failure is
+    /// reported on the error row; deleting an absent id is a no-op.
     pub fn delete_note(&mut self, id: &str) {
         match self.store.delete(id) {
             Ok(()) => {

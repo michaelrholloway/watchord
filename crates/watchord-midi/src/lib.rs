@@ -30,13 +30,28 @@ pub enum MidiEvent {
     /// Note-on. **Velocity 0 is not normalised here.** Many controllers send
     /// note-on/velocity-0 in place of note-off; `HeldNoteTracker` owns that
     /// rule, alone, so there is exactly one thing to test and one thing to break.
-    NoteOn { note: u8, velocity: u8, channel: u8 },
+    NoteOn {
+        /// MIDI note number, 0–127.
+        note: u8,
+        /// 1–127 for a strike; 0 is the note-off convention, left to the tracker.
+        velocity: u8,
+        /// MIDI channel, 0–15.
+        channel: u8,
+    },
     /// Note-off. Release velocity is not carried: nothing in this app reads it.
-    NoteOff { note: u8, channel: u8 },
+    NoteOff {
+        /// MIDI note number, 0–127.
+        note: u8,
+        /// MIDI channel, 0–15.
+        channel: u8,
+    },
     /// Control change, 7-bit value. CC64 is the sustain pedal; see `tuning`.
     ControlChange {
+        /// Controller number; 64 is sustain.
         controller: u8,
+        /// The controller's 7-bit value.
         value: u8,
+        /// MIDI channel, 0–15.
         channel: u8,
     },
 }
