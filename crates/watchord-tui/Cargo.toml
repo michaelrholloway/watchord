@@ -1,6 +1,6 @@
 [package]
 name = "watchord-tui"
-description = "watchord terminal skin (stub)"
+description = "watchord terminal skin: PUSH drawn with ratatui"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,3 +9,14 @@ repository.workspace = true
 
 [dependencies]
 watchord-core = { workspace = true }
+watchord-model = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

@@ -34,6 +34,9 @@ uuid = { version = "1", features = ["v4"] }
 directories = "6"
 midir = "0.11"
 thiserror = "2"
+ratatui = "0.30"
+crossterm = "0.29"
+unicode-width = "0.2"
 
 # The profile that 'dist' will build with
 [profile.dist]
