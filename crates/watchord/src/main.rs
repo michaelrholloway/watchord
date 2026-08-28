@@ -1,9 +1,8 @@
 //! The `watchord` binary.
 //!
 //! Builds the graph at the composition root and hands the model to the skin.
-//! The terminal skin arrives with a later ticket; until then every launch is
-//! headless — `--print` — which runs the model and prints what it shows, so
-//! the model can be checked before anything draws.
+//! `--print` runs the model headless instead and prints what it shows, so the
+//! model can be checked without a terminal.
 
 mod composition;
 mod print;
@@ -45,11 +44,18 @@ fn main() -> ExitCode {
         println!("watchord {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
-    if !args.print {
-        eprintln!("watchord: the terminal skin is not built yet; running as --print");
-    }
     let is_fake = args.fake || args.fake_released || args.fake_fit || args.fake_nearest;
     let graph = Composition::for_launch(&args);
     let kinds = graph.kinds.clone();
-    print::run(graph.make_model(), &kinds, is_fake)
+    if args.print {
+        return print::run(graph.make_model(), &kinds, is_fake);
+    }
+    match watchord_tui::run(graph.make_model()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            watchord_tui::restore();
+            eprintln!("watchord: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
