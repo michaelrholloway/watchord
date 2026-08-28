@@ -24,6 +24,7 @@ use crate::quality_catalog::{CatalogEntry, QualityCatalog};
 pub struct NamingEngine;
 
 impl NamingEngine {
+    /// The engine. Stateless, so this is the same as `Default`.
     pub fn new() -> Self {
         NamingEngine
     }
@@ -89,7 +90,7 @@ impl ChordNaming for NamingEngine {
 
         let headline_root = best.entry.root().pitch_class();
         let mut readings: Vec<ChordReading> = ranked
-            .iter()
+            .into_iter()
             .enumerate()
             .map(|(rank, scored)| ChordReading {
                 display: scored.entry.display(),
@@ -97,7 +98,7 @@ impl ChordNaming for NamingEngine {
                 origin: Self::origin(rank, scored.entry.root().pitch_class(), headline_root),
                 score: scored.score,
                 pitch_classes: scored.entry.chord.pitch_classes.clone(),
-                fit: scored.fit.clone(),
+                fit: scored.fit,
                 root: scored.entry.root().pitch_class(),
             })
             .collect();

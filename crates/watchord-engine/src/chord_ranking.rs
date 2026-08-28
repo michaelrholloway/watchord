@@ -16,12 +16,15 @@ use crate::{SpelledChord, SpelledTone};
 /// read first and the opinion only ever separates readings that fit alike.
 #[derive(Clone, Debug)]
 pub struct ScoredReading {
+    /// The candidate.
     pub entry: CatalogEntry,
+    /// Which tier it landed in.
     pub fit: ChordFit,
     /// The weighted distance from the sounding keys — 0 for `Exact`, and rising
     /// with how dear the differences are. `ChordFit` compares on its tier alone,
     /// and two readings in the same tier are still not equally far away.
     pub fit_cost: i32,
+    /// The ranking opinion; higher wins inside a tier.
     pub score: i32,
 }
 
@@ -111,6 +114,7 @@ impl ChordFitting {
         (fit, cost)
     }
 
+    /// What leaving this one tone out costs, from `tuning::fit`.
     pub fn cost_of_absent(tone: &SpelledTone) -> i32 {
         if tone.omissible() {
             return tuning::fit::SANCTIONED_OMISSION;

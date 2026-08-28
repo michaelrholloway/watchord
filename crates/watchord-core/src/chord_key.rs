@@ -22,6 +22,7 @@ pub struct ChordKey {
 }
 
 impl ChordKey {
+    /// Canonicalises any pitch classes: distinct, ascending, dot-joined.
     pub fn new(pitch_classes: impl IntoIterator<Item = PitchClass>) -> Self {
         let set: BTreeSet<PitchClass> = pitch_classes.into_iter().collect();
         ChordKey {
@@ -69,10 +70,12 @@ impl ChordKey {
         })
     }
 
+    /// The canonical string, `"0.4.7.9"`.
     pub fn raw(&self) -> &str {
         &self.raw
     }
 
+    /// The pitch classes this key names, ascending.
     pub fn pitch_classes(&self) -> BTreeSet<PitchClass> {
         self.raw
             .split('.')
@@ -81,6 +84,7 @@ impl ChordKey {
             .collect()
     }
 
+    /// True for the key of silence.
     pub fn is_empty(&self) -> bool {
         self.raw.is_empty()
     }

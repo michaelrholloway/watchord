@@ -61,6 +61,7 @@ impl ReadingDisplay {
         }
     }
 
+    /// A stable identity for a list row: the name plus the `≈` mark, if any.
     pub fn id(&self) -> String {
         format!(
             "{}{}",
@@ -85,9 +86,8 @@ impl ReadingDisplay {
         if bass == reading.root {
             return reading.display.clone();
         }
-        let written_flat = ChordRoot::parse(&reading.display, &reading.pitch_classes)
-            .map(|r| r.is_flat)
-            .unwrap_or(false);
+        let written_flat =
+            ChordRoot::parse(&reading.display, &reading.pitch_classes).is_some_and(|r| r.is_flat);
         format!(
             "{}/{}",
             reading.display,
@@ -105,12 +105,15 @@ impl ReadingDisplay {
 /// pitch classes the reading claims, and the one that is present wins.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ChordRoot {
+    /// The pitch class the written root sounds.
     pub pitch_class: PitchClass,
     /// True when the root was written with a flat.
     pub is_flat: bool,
 }
 
 impl ChordRoot {
+    /// Reads the root off a written name such as `Bbm7`. `None` when the first
+    /// character is not a letter `A`–`G`.
     pub fn parse(display: &str, claiming: &BTreeSet<PitchClass>) -> Option<Self> {
         let mut chars = display.chars();
         let letter = chars.next()?;
@@ -159,6 +162,7 @@ impl ChordRoot {
 pub struct NoteName;
 
 impl NoteName {
+    /// The twelve written with sharps.
     pub const PITCH_CLASS_NAMES: [&'static str; 12] = [
         "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
     ];
@@ -172,6 +176,7 @@ impl NoteName {
     /// MIDI 60 renders as `C3`.
     pub const MIDDLE_C_OCTAVE: i32 = 3;
 
+    /// The name of one pitch class, with sharps unless `preferring_flats`.
     pub fn pitch_class(pitch_class: PitchClass, preferring_flats: bool) -> &'static str {
         let names = if preferring_flats {
             &Self::FLAT_PITCH_CLASS_NAMES

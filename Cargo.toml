@@ -16,17 +16,26 @@ edition = "2024"
 rust-version = "1.98"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/michaelrholloway/watchord"
+homepage = "https://github.com/michaelrholloway/watchord"
+authors = ["Michael Holloway"]
 
 [workspace.dependencies]
-watchord-core = { path = "crates/watchord-core" }
-watchord-engine = { path = "crates/watchord-engine" }
-watchord-store = { path = "crates/watchord-store" }
-watchord-midi = { path = "crates/watchord-midi" }
-watchord-model = { path = "crates/watchord-model" }
-watchord-tui = { path = "crates/watchord-tui" }
+# version is required alongside path so `cargo publish` can resolve these
+# against crates.io once each crate has a release out; see scripts/wizard/crates-token.sh.
+watchord-core = { path = "crates/watchord-core", version = "0.1.0" }
+watchord-engine = { path = "crates/watchord-engine", version = "0.1.0" }
+watchord-store = { path = "crates/watchord-store", version = "0.1.0" }
+watchord-midi = { path = "crates/watchord-midi", version = "0.1.0" }
+watchord-model = { path = "crates/watchord-model", version = "0.1.0" }
+watchord-tui = { path = "crates/watchord-tui", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 directories = "6"
 midir = "0.11"
 thiserror = "2"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

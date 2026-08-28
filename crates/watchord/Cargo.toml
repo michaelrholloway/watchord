@@ -6,6 +6,14 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[package.metadata.wix]
+upgrade-guid = "99EA0297-C43F-4065-8B00-039B2391D3E9"
+path-guid = "C22F41A7-70B7-46C7-9EF4-94D98CF1C47A"
+license = false
+eula = false
 
 [dependencies]
 watchord-core = { workspace = true }
