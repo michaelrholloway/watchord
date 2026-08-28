@@ -1,7 +1,7 @@
  WATCHORD               CHORD DISPLAYER        ALL NOTES                3 NOTES
  ──────────────────────────────────────────────────────────────────────────────
-  INPUT FAKE    STATE HELD
-  NOW PLAYING    ALL NOTES
+ [ INPUT FAKE ]  [ STATE HELD ]
+  NOW PLAYING   ▌ALL NOTES
  §  Every note                                                     3 · 2 CHORDS
                NOTE                    WRITTEN AS    WHEN
  ──────────────────────────────────────────────────────────────────────────────

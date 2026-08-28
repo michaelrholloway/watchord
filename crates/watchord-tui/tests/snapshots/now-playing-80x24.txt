@@ -1,10 +1,13 @@
  WATCHORD               CHORD DISPLAYER        NOW PLAYING              2 NOTES
  ──────────────────────────────────────────────────────────────────────────────
-  INPUT FAKE    STATE HELD
-  NOW PLAYING    ALL NOTES
+ [ INPUT FAKE ]  [ STATE HELD ]
+ ▌NOW PLAYING    ALL NOTES
  ┌────────────────────────────────────────────────────────────────────────────┐
- │                                 ▄▀▀▀▀ ▄██                                  │
- │                                 ▀▄▄▄▄ ▀▄▄▀                                 │
+ │                                  ████  ██                                  │
+ │                                 █     █                                    │
+ │                                 █     ███                                  │
+ │                                 █     █  █                                 │
+ │                                  ████  ██                                  │
  │                                  C major 6                                 │
  └────────────────────────────────────────────────────────────────────────────┘
  01  Alternate readings                                                       2
@@ -17,8 +20,5 @@
    NOTE
  ──────────────────────────────────────────────────────────────────────────────
  ▌ try it with the 9 on top                                              DELETE
- ▌ sounds like the Rhodes on Voodoo                                      DELETE
-
-
  ▌ add a note…
  TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT

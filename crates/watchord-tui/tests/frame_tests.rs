@@ -233,7 +233,7 @@ fn assert_snapshot(name: &str, rows: &[String]) {
     );
 }
 
-const SIZES: [(u16, u16); 2] = [(80, 24), (120, 40)];
+const SIZES: [(u16, u16); 3] = [(80, 24), (120, 34), (120, 40)];
 
 #[test]
 fn now_playing_shows_the_headline_both_plates_and_the_table_heads() {
@@ -241,7 +241,7 @@ fn now_playing_shows_the_headline_both_plates_and_the_table_heads() {
         let model = fake_model(false, Screen::NowPlaying);
         let rows = render(&model, width, height);
         let text = text_of(&rows);
-        assert_figure_present(&rows, "C6", height >= 34);
+        assert_figure_present(&rows, "C6", height >= 24);
         assert!(
             text.contains("INPUT"),
             "no INPUT plate at {width}x{height}:\n{text}"
@@ -257,6 +257,17 @@ fn now_playing_shows_the_headline_both_plates_and_the_table_heads() {
         assert!(
             text.contains("HELD"),
             "no state label at {width}x{height}:\n{text}"
+        );
+        // The plates keep a box at every size: a light box, or brackets.
+        assert!(
+            text.contains("┌ INPUT") || text.contains("[ INPUT FAKE ]"),
+            "the INPUT plate is bare text at {width}x{height}:\n{text}"
+        );
+        // The selected tab is a label with an indicator, never a fill: the
+        // accent rule beneath it, or the accent mark before it.
+        assert!(
+            text.contains("▌NOW PLAYING") || text.contains("━━━━━━━━━━━━━──"),
+            "no tab indicator at {width}x{height}:\n{text}"
         );
         for head in ["READING", "AXIS", "FIT", "SAID ALOUD", "NOTE"] {
             assert!(
@@ -276,7 +287,7 @@ fn released_shows_the_plate_in_the_display_and_on_the_band() {
         let model = fake_model(true, Screen::NowPlaying);
         let rows = render(&model, width, height);
         let text = text_of(&rows);
-        assert_figure_present(&rows, "C6", height >= 34);
+        assert_figure_present(&rows, "C6", height >= 24);
         assert_eq!(
             text.matches("RELEASED").count(),
             2,
@@ -292,7 +303,7 @@ fn fit_shows_the_detail_under_the_headline_and_the_mark_beside_an_alternate() {
         let model = fit_model();
         let rows = render(&model, width, height);
         let text = text_of(&rows);
-        assert_figure_present(&rows, "C13/E", height >= 34);
+        assert_figure_present(&rows, "C13/E", height >= 24);
         assert!(
             text.contains("·NO5 ·NO11"),
             "no fit detail at {width}x{height}:\n{text}"

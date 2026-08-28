@@ -378,10 +378,10 @@ impl Plate {
     /// The rows this plate takes, drawn in full: the box plus its label.
     pub const HEIGHT: u16 = 3;
 
-    /// The columns this plate takes in one row: `TITLE LABEL`.
+    /// The columns this plate takes in one row: `[ TITLE LABEL ]`.
     pub fn compact_width(&self) -> u16 {
         let title = self.title.as_deref().map_or(0, |t| t.width() + 1);
-        (title + self.label.width() + 2) as u16
+        (title + self.label.width() + 4) as u16
     }
 
     fn ink(&self) -> Token {
@@ -422,21 +422,24 @@ impl Plate {
         .render(inner, buf);
     }
 
-    /// The plate in one row, for a short terminal: the box goes, the tone stays
-    /// on the ink (outline) or the fill (solid). Nothing it reports changes.
+    /// The plate in one row, for a short terminal: the box collapses to a pair
+    /// of brackets in the tone, `[ INPUT FAKE ]`, so it still reads as a plate
+    /// and not as a line of text. Nothing it reports changes.
     pub fn render_compact(&self, area: Rect, buf: &mut Buffer) {
         let area = Rect {
             width: area.width.min(self.compact_width()),
             height: area.height.min(1),
             ..area
         };
-        let mut spans = vec![Span::raw(" ")];
+        let bracket = Style::default().fg(self.tone.plate().color());
+        let mut spans = vec![Span::styled("[", bracket), Span::raw(" ")];
         if let Some(title) = &self.title {
             spans.push(meta_in(title, self.ink()).add_modifier(Modifier::DIM));
             spans.push(Span::raw(" "));
         }
         spans.push(meta_in(&self.label, self.ink()));
         spans.push(Span::raw(" "));
+        spans.push(Span::styled("]", bracket));
         Paragraph::new(Line::from(spans))
             .style(self.fill())
             .render(area, buf);
@@ -463,10 +466,14 @@ pub fn ghost_button(label: &str, selected: bool) -> Span<'static> {
 
 // MARK: - p-tabs
 
-/// `p-tabs`, underline variant: the selected tab carries the accent rule
-/// beneath it. Two rows; one row when `compact`, where the selected tab sits
-/// on the accent field instead. Returns one rect per tab, the label and its
-/// underline, for hit-testing a click.
+/// `p-tabs`, underline variant: the selected tab is a label in the foreground
+/// with the accent indicator beneath it; the others are muted. One row when
+/// `compact`, where the indicator moves to the label's leading edge. Never a
+/// fill — the acid is a field for data, not for chrome. Returns one rect per
+/// tab for hit-testing a click.
+/// The accent mark before a selected tab's label in the one-row form.
+const INDICATOR: &str = "▌";
+
 pub fn tabs(
     items: &[&str],
     selected: usize,
@@ -479,7 +486,12 @@ pub fn tabs(
     let mut rects = Vec::with_capacity(items.len());
     let mut x = area.x;
     for (index, item) in items.iter().enumerate() {
-        let text = format!(" {} ", item.to_uppercase());
+        let is_selected = index == selected;
+        let text = if compact && is_selected {
+            format!("{}{} ", INDICATOR, item.to_uppercase())
+        } else {
+            format!(" {} ", item.to_uppercase())
+        };
         let width = text.width();
         rects.push(Rect {
             x,
@@ -487,22 +499,25 @@ pub fn tabs(
             ..area
         });
         x += width as u16 + 2;
-        let is_selected = index == selected;
-        let label = if is_selected {
+        if is_selected {
             if compact {
-                Span::styled(
-                    text,
-                    Style::default()
-                        .fg(ACCENT_FOREGROUND.color())
-                        .bg(ACCENT_BACKGROUND.color()),
-                )
+                label_spans.push(Span::styled(
+                    INDICATOR.to_string(),
+                    Style::default().fg(ACCENT_BACKGROUND.color()),
+                ));
+                label_spans.push(Span::styled(
+                    text[INDICATOR.len()..].to_string(),
+                    Style::default().fg(FOREGROUND.color()),
+                ));
             } else {
-                Span::styled(text, Style::default().fg(FOREGROUND.color()))
+                label_spans.push(Span::styled(text, Style::default().fg(FOREGROUND.color())));
             }
         } else {
-            Span::styled(text, Style::default().fg(MUTED_FOREGROUND.color()))
-        };
-        label_spans.push(label);
+            label_spans.push(Span::styled(
+                text,
+                Style::default().fg(MUTED_FOREGROUND.color()),
+            ));
+        }
         label_spans.push(Span::raw("  "));
         let underline = if is_selected { "━" } else { "─" }.repeat(width);
         let ink = if is_selected {
@@ -576,14 +591,15 @@ pub const RUNNING_HEAD_HEIGHT: u16 = 2;
 
 // MARK: - c-section-head
 
-/// `c-section-head` — the display rule, a marker in the gutter, the title, and
-/// right-aligned meta. Three rows; one when `compact`, where the rule goes and
-/// the title row stands alone.
+/// `c-section-head` — a rule, a marker in the gutter, the title, and
+/// right-aligned meta. The rule is the display pair where there is room, a
+/// plain rule where there is less, and `None` where the title row must stand
+/// alone.
 pub fn section_head(
     marker: &str,
     title: &str,
     meta_text: &str,
-    compact: bool,
+    head_rule: Option<RuleWeight>,
     area: Rect,
     buf: &mut Buffer,
 ) {
@@ -591,8 +607,7 @@ pub fn section_head(
         return;
     }
     let mut y = area.y;
-    if !compact {
-        let weight = RuleWeight::Display;
+    if let Some(weight) = head_rule {
         rule(
             weight,
             Rect {
@@ -623,8 +638,8 @@ pub fn section_head(
 }
 
 /// Rows `section_head` takes.
-pub fn section_head_height(compact: bool) -> u16 {
-    if compact { 1 } else { 3 }
+pub fn section_head_height(head_rule: Option<RuleWeight>) -> u16 {
+    1 + head_rule.map_or(0, RuleWeight::height)
 }
 
 // MARK: - p-table

@@ -146,15 +146,46 @@ impl UiState {
     }
 }
 
-/// Below this many rows the chrome packs: one-row plates, tabs and section
-/// heads, the keys as a line rather than a panel, no blank rows between
-/// blocks. Nothing the screen says changes.
-pub const COMPACT_BELOW: u16 = 44;
+/// How much room the frame has. Nothing the screen says changes with it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Density {
+    /// Below 30 rows: one-row plates, tabs and section heads, no rules
+    /// between sections, the keys as a line.
+    pub packed: bool,
+    /// 44 rows and up: the display rule on section heads, blank rows between
+    /// blocks, padding in the display panel, the keys on a panel.
+    pub roomy: bool,
+    /// 24 rows and up: the tall headline figure; below it, the short one.
+    pub tall: bool,
+}
 
-/// From this many rows the headline takes the tall figure; below it, the short
-/// one. Independent of the chrome packing, so a 40-row terminal still gets the
-/// headline drawn large.
-pub const TALL_FROM: u16 = 30;
+/// Below this many rows the chrome packs.
+pub const PACKED_BELOW: u16 = 30;
+/// From this many rows the chrome gets its air.
+pub const ROOMY_FROM: u16 = 44;
+/// From this many rows the headline takes the tall figure.
+pub const TALL_FROM: u16 = 24;
+
+impl Density {
+    pub fn for_height(height: u16) -> Self {
+        Density {
+            packed: height < PACKED_BELOW,
+            roomy: height >= ROOMY_FROM,
+            tall: height >= TALL_FROM,
+        }
+    }
+
+    /// The rule a section head carries at this density.
+    fn section_rule(self) -> Option<RuleWeight> {
+        if self.packed {
+            None
+        } else if self.roomy {
+            Some(RuleWeight::Display)
+        } else {
+            Some(RuleWeight::Rule)
+        }
+    }
+}
 
 /// The one-line key reference at the foot of every screen.
 const KEYS_HELP: &str = "tab screen · ↑↓ select · d delete · enter save · q quit";
@@ -174,8 +205,8 @@ pub fn draw(frame: &mut Frame, model: &AppModel, ui: &UiState) -> Hits {
 /// Draws the whole frame into a buffer.
 pub fn draw_into(area: Rect, buf: &mut Buffer, model: &AppModel, ui: &UiState) -> Drawn {
     let mut hits = Hits::default();
-    let compact = area.height < COMPACT_BELOW;
-    let tall = area.height >= TALL_FROM;
+    let density = Density::for_height(area.height);
+    let compact = density.packed;
     let margin = if compact { 1 } else { 2 };
     let inner = Rect {
         x: area.x + margin,
@@ -216,7 +247,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, model: &AppModel, ui: &UiState) -
         buf,
     );
     hits.tabs = tab_rects.into_iter().zip(Screen::ALL).collect();
-    if tall {
+    if density.roomy {
         cursor.skip(1);
     }
 
@@ -225,9 +256,9 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, model: &AppModel, ui: &UiState) -
     Paragraph::new(Line::from(push::meta(KEYS_HELP))).render(help, buf);
 
     let cursor = match model.screen {
-        Screen::NowPlaying => now_playing(model, ui, compact, tall, cursor, buf, &mut hits),
+        Screen::NowPlaying => now_playing(model, ui, density, cursor, buf, &mut hits),
         Screen::AllNotes => {
-            all_notes(model, ui, compact, cursor, buf, &mut hits);
+            all_notes(model, ui, density, cursor, buf, &mut hits);
             None
         }
     };
@@ -362,8 +393,7 @@ fn error_row(status: &str, cursor: &mut Cursor, buf: &mut Buffer) {
 fn now_playing(
     model: &AppModel,
     ui: &UiState,
-    compact: bool,
-    tall: bool,
+    density: Density,
     mut cursor: Cursor,
     buf: &mut Buffer,
     hits: &mut Hits,
@@ -377,17 +407,19 @@ fn now_playing(
     };
     let field_area = {
         let block = cursor.take_bottom(1 + hint);
-        cursor.take_bottom(1);
+        if !density.packed {
+            cursor.take_bottom(1);
+        }
         block
     };
 
-    display(model, compact, tall, &mut cursor, buf);
-    if !compact {
+    display(model, density, &mut cursor, buf);
+    if density.roomy {
         cursor.skip(1);
     }
-    alternates(model, ui, compact, &mut cursor, buf, hits);
-    particulars(model, compact, &mut cursor, buf);
-    notes_on_this_chord(model, ui, compact, &mut cursor, buf, hits);
+    alternates(model, ui, density, &mut cursor, buf, hits);
+    particulars(model, density, &mut cursor, buf);
+    notes_on_this_chord(model, ui, density, &mut cursor, buf, hits);
 
     hits.field = Some(Rect {
         height: 1.min(field_area.height),
@@ -399,7 +431,8 @@ fn now_playing(
 /// The display panel: the headline figure with `≈` beside it, the spoken name,
 /// the fit note, the decline sentence, the `released` plate, and the waiting
 /// line. The one panel on the screen that is live.
-fn display(model: &AppModel, compact: bool, tall: bool, cursor: &mut Cursor, buf: &mut Buffer) {
+fn display(model: &AppModel, density: Density, cursor: &mut Cursor, buf: &mut Buffer) {
+    let compact = density.packed;
     let text = model.headline_text();
     let figure_text = match model.headline_approximation() {
         Some(mark) => format!("{text} {mark}"),
@@ -411,12 +444,12 @@ fn display(model: &AppModel, compact: bool, tall: bool, cursor: &mut Cursor, buf
     let released = model.is_released();
     let waiting = model.displayed().is_none();
 
-    let pad = if compact { 0 } else { 1 };
+    let pad = if density.roomy { 1 } else { 0 };
     let block = push::panel();
     let probe = block.inner(cursor.take(0));
     let inner_width = probe.width.saturating_sub(2);
     let figure_width = figure::width(&figure_text) as u16;
-    let figure_height = if tall && figure_width <= inner_width {
+    let figure_height = if density.tall && figure_width <= inner_width {
         figure::TALL_HEIGHT
     } else if figure_width <= inner_width {
         figure::SHORT_HEIGHT
@@ -523,7 +556,7 @@ const ALTERNATE_COLUMNS: [Column; 4] = [
 fn alternates(
     model: &AppModel,
     ui: &UiState,
-    compact: bool,
+    density: Density,
     cursor: &mut Cursor,
     buf: &mut Buffer,
     hits: &mut Hits,
@@ -532,12 +565,12 @@ fn alternates(
     if readings.is_empty() {
         return;
     }
-    let head = cursor.take(push::section_head_height(compact));
+    let head = cursor.take(push::section_head_height(density.section_rule()));
     push::section_head(
         "01",
         "Alternate readings",
         &readings.len().to_string(),
-        compact,
+        density.section_rule(),
         head,
         buf,
     );
@@ -569,19 +602,19 @@ fn alternates(
     let area = cursor.take(table.full_height());
     table.render(area, buf);
     hits.scroll_areas.push((area, ScrollTarget::Alternates));
-    if !compact {
+    if density.roomy {
         cursor.skip(1);
     }
 }
 
 /// The keys cluster: one term, one description, on a panel.
-fn particulars(model: &AppModel, compact: bool, cursor: &mut Cursor, buf: &mut Buffer) {
+fn particulars(model: &AppModel, density: Density, cursor: &mut Cursor, buf: &mut Buffer) {
     let keys = model.keys_row();
     if keys.is_empty() {
         return;
     }
     let line = push::definition("keys", &keys);
-    if compact {
+    if !density.roomy {
         let area = cursor.take(1);
         Paragraph::new(line).render(
             Rect {
@@ -617,18 +650,18 @@ const NOTE_COLUMNS: [Column; 2] = [
 fn notes_on_this_chord(
     model: &AppModel,
     ui: &UiState,
-    compact: bool,
+    density: Density,
     cursor: &mut Cursor,
     buf: &mut Buffer,
     hits: &mut Hits,
 ) {
     let notes = model.notes_for_displayed_chord();
-    let head = cursor.take(push::section_head_height(compact));
+    let head = cursor.take(push::section_head_height(density.section_rule()));
     push::section_head(
         "02",
         "Notes on this chord",
         &notes.len().to_string(),
-        compact,
+        density.section_rule(),
         head,
         buf,
     );
@@ -735,7 +768,7 @@ const ALL_NOTE_COLUMNS: [Column; 4] = [
 fn all_notes(
     model: &AppModel,
     ui: &UiState,
-    compact: bool,
+    density: Density,
     mut cursor: Cursor,
     buf: &mut Buffer,
     hits: &mut Hits,
@@ -750,12 +783,12 @@ fn all_notes(
         .render(area, buf);
         return;
     }
-    let head = cursor.take(push::section_head_height(compact));
+    let head = cursor.take(push::section_head_height(density.section_rule()));
     push::section_head(
         "§",
         "Every note",
         &format!("{} · {} chords", model.total_note_count(), groups.len()),
-        compact,
+        density.section_rule(),
         head,
         buf,
     );
@@ -795,10 +828,10 @@ fn all_notes(
         })
         .collect();
     let visible = cursor.remaining();
-    let head_rule = if compact {
-        RuleWeight::Rule
-    } else {
+    let head_rule = if density.roomy {
         RuleWeight::Display
+    } else {
+        RuleWeight::Rule
     };
     let table = Table {
         columns: &ALL_NOTE_COLUMNS,
