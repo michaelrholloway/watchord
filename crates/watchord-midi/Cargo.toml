@@ -1,6 +1,6 @@
 [package]
 name = "watchord-midi"
-description = "watchord sounding set source over MIDI (stub)"
+description = "watchord sounding set source over MIDI via midir"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,4 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+thiserror = { workspace = true }
 watchord-core = { workspace = true }
+midir = { workspace = true }
+

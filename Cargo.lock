@@ -751,6 +751,7 @@ name = "watchord-midi"
 version = "0.1.0"
 dependencies = [
  "midir",
+ "thiserror 2.0.20",
  "watchord-core",
 ]
 
@@ -769,6 +770,7 @@ dependencies = [
  "directories",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
  "uuid",
  "watchord-core",
 ]
