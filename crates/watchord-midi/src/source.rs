@@ -1,0 +1,282 @@
+//! `SoundingSetSource` over `midir`: connects to every MIDI input on the
+//! machine (or the one named), decodes what arrives, and yields settled
+//! `SoundingSet`s. Deliberately thin — the wire format, the state machine and
+//! the debounce all live in files that never touch a device.
+//!
+//! ## Threads
+//!
+//! - `midir` calls back on its own thread, once per message. The callback
+//!   decodes and pushes a batch onto an unbounded channel and returns; it never
+//!   blocks and never drops, because a dropped note-off is a stuck note.
+//! - A **relay thread** drains that channel into a [`SettleRelay`] in arrival
+//!   order — so a note-off can never overtake its note-on — and emits each
+//!   settled set.
+//! - A **watch thread** re-enumerates the inputs every [`HOT_PLUG_INTERVAL`],
+//!   connects what appeared, drops what vanished, and publishes the current
+//!   names whenever they change. Polling rather than a platform notification
+//!   because it is the one mechanism that behaves the same on all three OSes.
+//!
+//! `stop()` closes a channel the watch thread waits on, so it ends within one
+//! poll and takes every connection with it; the relay thread then sees its
+//! channel close and ends too, closing the sounding-set channel behind it.
+
+use std::collections::BTreeMap;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
+
+use midir::{Ignore, MidiInput, MidiInputConnection};
+use watchord_core::tuning;
+use watchord_core::{SoundingSet, SoundingSetSource, SourceError};
+
+use crate::{MidiEvent, SettleRelay, decode};
+
+/// How often the inputs are re-enumerated for hot-plug.
+pub const HOT_PLUG_INTERVAL: Duration = Duration::from_secs(2);
+
+/// The threads and channels alive between `start()` and `stop()`.
+struct Running {
+    /// Dropping this is the stop signal for the watch thread.
+    stop: Sender<()>,
+    watch: JoinHandle<()>,
+    relay: JoinHandle<()>,
+}
+
+pub struct MidiSource {
+    client_name: String,
+    /// `--input <name>`: connect only to inputs whose name contains this,
+    /// case-insensitively. `None` connects to every input.
+    filter: Option<String>,
+    settle: Duration,
+    sounding: (Sender<SoundingSet>, Option<Receiver<SoundingSet>>),
+    inputs: (Sender<Vec<String>>, Option<Receiver<Vec<String>>>),
+    running: Option<Running>,
+}
+
+impl Default for MidiSource {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
+impl MidiSource {
+    /// A source over every input, or only those matching `filter`.
+    pub fn new(filter: Option<String>) -> Self {
+        Self::with_settle(filter, tuning::SETTLE_INTERVAL)
+    }
+
+    pub fn with_settle(filter: Option<String>, settle: Duration) -> Self {
+        let sounding = mpsc::channel();
+        let inputs = mpsc::channel();
+        MidiSource {
+            client_name: "watchord".to_string(),
+            filter,
+            settle,
+            sounding: (sounding.0, Some(sounding.1)),
+            inputs: (inputs.0, Some(inputs.1)),
+            running: None,
+        }
+    }
+
+    /// The names of the inputs on this machine right now, filtered. A probe
+    /// for the composition root and the `--print` check; opens no connection.
+    pub fn available_inputs(&self) -> Result<Vec<String>, SourceError> {
+        let midi = MidiInput::new(&self.client_name)
+            .map_err(|e| SourceError::CouldNotStart(e.to_string()))?;
+        Ok(midi
+            .ports()
+            .iter()
+            .filter_map(|port| midi.port_name(port).ok())
+            .filter(|name| accepts(self.filter.as_deref(), name))
+            .collect())
+    }
+}
+
+/// The filter rule, in one place: a case-insensitive substring match.
+fn accepts(filter: Option<&str>, name: &str) -> bool {
+    match filter {
+        None => true,
+        Some(wanted) => name.to_lowercase().contains(&wanted.to_lowercase()),
+    }
+}
+
+impl SoundingSetSource for MidiSource {
+    fn sounding_sets(&mut self) -> Receiver<SoundingSet> {
+        self.sounding.1.take().unwrap_or_else(|| mpsc::channel().1)
+    }
+
+    fn connected_inputs(&mut self) -> Receiver<Vec<String>> {
+        self.inputs.1.take().unwrap_or_else(|| mpsc::channel().1)
+    }
+
+    fn start(&mut self) -> Result<(), SourceError> {
+        if self.running.is_some() {
+            return Ok(());
+        }
+        // Prove the MIDI layer opens before spawning anything.
+        MidiInput::new(&self.client_name).map_err(|e| SourceError::CouldNotStart(e.to_string()))?;
+
+        let (events_tx, events_rx) = mpsc::channel::<Vec<MidiEvent>>();
+        let (stop_tx, stop_rx) = mpsc::channel::<()>();
+
+        let relay = {
+            let sounding_tx = self.sounding.0.clone();
+            let settle = self.settle;
+            thread::spawn(move || run_relay(events_rx, sounding_tx, settle))
+        };
+        let watch = {
+            let client_name = self.client_name.clone();
+            let filter = self.filter.clone();
+            let inputs_tx = self.inputs.0.clone();
+            thread::spawn(move || run_watch(client_name, filter, events_tx, inputs_tx, stop_rx))
+        };
+        self.running = Some(Running {
+            stop: stop_tx,
+            watch,
+            relay,
+        });
+
+        // A named input that is not here is reported, not fatal: the watch
+        // thread keeps looking, so plugging it in later still works.
+        if let Some(wanted) = &self.filter
+            && self.available_inputs()?.is_empty()
+        {
+            return Err(SourceError::NoSuchInput(wanted.clone()));
+        }
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        let Some(running) = self.running.take() else {
+            return;
+        };
+        drop(running.stop);
+        let _ = running.watch.join();
+        let _ = running.relay.join();
+    }
+}
+
+impl Drop for MidiSource {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Drains event batches into the relay and emits each settled set. Ends when
+/// every sender of `events` is gone, which is when the watch thread ends.
+fn run_relay(events: Receiver<Vec<MidiEvent>>, out: Sender<SoundingSet>, settle: Duration) {
+    let mut relay = SettleRelay::new(settle);
+    loop {
+        let wait = relay
+            .due_at()
+            .map(|due| due.saturating_duration_since(Instant::now()))
+            .unwrap_or(Duration::from_secs(3600));
+        match events.recv_timeout(wait) {
+            Ok(batch) => relay.receive(batch, Instant::now()),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+        if let Some(sounding) = relay.fire(Instant::now())
+            && out.send(sounding).is_err()
+        {
+            break;
+        }
+    }
+}
+
+/// Connects to the inputs, re-enumerating every `HOT_PLUG_INTERVAL` until
+/// `stop` closes. Owns every connection; they drop when it returns.
+fn run_watch(
+    client_name: String,
+    filter: Option<String>,
+    events: Sender<Vec<MidiEvent>>,
+    inputs: Sender<Vec<String>>,
+    stop: Receiver<()>,
+) {
+    let mut connections: BTreeMap<String, MidiInputConnection<()>> = BTreeMap::new();
+    let mut published: Option<Vec<String>> = None;
+    loop {
+        let present = enumerate(&client_name, filter.as_deref());
+
+        // Drop what vanished.
+        connections.retain(|name, _| present.contains(name));
+
+        // Connect what appeared. Each connection needs its own client: `midir`
+        // consumes the `MidiInput` on connect.
+        for name in &present {
+            if connections.contains_key(name) {
+                continue;
+            }
+            if let Some(connection) = connect(&client_name, name, events.clone()) {
+                connections.insert(name.clone(), connection);
+            }
+        }
+
+        // Publish on the first pass and on every change — a whole set, so a
+        // late consumer gets the current answer and never a history.
+        let names: Vec<String> = connections.keys().cloned().collect();
+        if published.as_ref() != Some(&names) {
+            if inputs.send(names.clone()).is_err() {
+                break;
+            }
+            published = Some(names);
+        }
+
+        match stop.recv_timeout(HOT_PLUG_INTERVAL) {
+            Err(RecvTimeoutError::Timeout) => continue,
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+        }
+    }
+}
+
+/// The names of the inputs that pass the filter, in port order.
+fn enumerate(client_name: &str, filter: Option<&str>) -> Vec<String> {
+    let Ok(midi) = MidiInput::new(client_name) else {
+        return Vec::new();
+    };
+    midi.ports()
+        .iter()
+        .filter_map(|port| midi.port_name(port).ok())
+        .filter(|name| accepts(filter, name))
+        .collect()
+}
+
+/// Opens one input by name. `None` if it went away between enumerating and
+/// connecting, which the next pass will notice.
+fn connect(
+    client_name: &str,
+    name: &str,
+    events: Sender<Vec<MidiEvent>>,
+) -> Option<MidiInputConnection<()>> {
+    let mut midi = MidiInput::new(client_name).ok()?;
+    midi.ignore(Ignore::All);
+    let port = midi
+        .ports()
+        .into_iter()
+        .find(|port| midi.port_name(port).ok().as_deref() == Some(name))?;
+    midi.connect(
+        &port,
+        "watchord in",
+        move |_timestamp, bytes, ()| {
+            let decoded = decode(bytes);
+            if !decoded.is_empty() {
+                let _ = events.send(decoded);
+            }
+        },
+        (),
+    )
+    .ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::accepts;
+
+    #[test]
+    fn the_filter_is_a_case_insensitive_substring() {
+        assert!(accepts(None, "OP-1 field"));
+        assert!(accepts(Some("op-1"), "OP-1 field"));
+        assert!(accepts(Some("field"), "OP-1 field"));
+        assert!(!accepts(Some("Nord"), "OP-1 field"));
+    }
+}
