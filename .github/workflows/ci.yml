@@ -25,7 +25,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev
       - name: cargo test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
   clippy:
     strategy:
@@ -42,7 +42,7 @@ jobs:
           sudo apt-get install -y libasound2-dev
       - run: rustup component add clippy
       - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   dist-plan:
     runs-on: ubuntu-latest

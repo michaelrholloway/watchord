@@ -380,6 +380,12 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      # `cargo publish` builds each crate to verify it; watchord-midi needs the
+      # same ALSA headers ci.yml installs, or the job fails on Linux.
+      - name: Install ALSA dev headers (needed by midir)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
       - name: Publish workspace crates in dependency order
         run: |
           # watchord-core has no workspace deps and must land first; the five

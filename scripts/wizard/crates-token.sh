@@ -191,7 +191,7 @@ banner "watchord: crates.io publish token"
 
 say "This sets CARGO_REGISTRY_TOKEN, the secret the hand-authored"
 say "publish-crates-io job in .github/workflows/release.yml reads to run"
-say "'cargo publish' for all six workspace crates on a tagged release."
+say "'cargo publish' for all seven workspace crates on a tagged release."
 say "Without it, that job skips cleanly and 'cargo install watchord' stays"
 say "unavailable -- this wizard is what turns it on."
 
