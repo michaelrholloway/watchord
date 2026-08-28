@@ -22,3 +22,4 @@ watchord-store = { workspace = true }
 watchord-midi = { workspace = true }
 watchord-model = { workspace = true }
 watchord-tui = { workspace = true }
+uuid = { workspace = true }

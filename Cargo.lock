@@ -720,6 +720,7 @@ dependencies = [
 name = "watchord"
 version = "0.1.0"
 dependencies = [
+ "uuid",
  "watchord-core",
  "watchord-engine",
  "watchord-midi",
