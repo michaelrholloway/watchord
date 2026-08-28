@@ -25,11 +25,14 @@ pub struct ChordNote {
     /// note was actually about.
     pub spelling_when_written: String,
 
+    /// What Michael wrote.
     pub text: String,
+    /// When it was written.
     pub created_at: SystemTime,
 }
 
 impl ChordNote {
+    /// Builds a note from its stored values. The store crate assigns `id` and `created_at`.
     pub fn new(
         id: impl Into<String>,
         chord_key: ChordKey,

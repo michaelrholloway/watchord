@@ -29,6 +29,7 @@ pub enum TriadQuality {
 }
 
 impl TriadQuality {
+    /// Declaration order.
     pub const ALL_CASES: [TriadQuality; 4] = [
         TriadQuality::Major,
         TriadQuality::Minor,
@@ -36,6 +37,7 @@ impl TriadQuality {
         TriadQuality::Diminished,
     ];
 
+    /// As written after the root: empty, `m`, `+`, `-`.
     pub fn symbol(self) -> &'static str {
         match self {
             TriadQuality::Major => "",
@@ -55,6 +57,7 @@ impl TriadQuality {
         }
     }
 
+    /// Semitones from the root to the third.
     pub fn third_semitones(self) -> i32 {
         match self {
             TriadQuality::Major | TriadQuality::Augmented => 4,
@@ -62,6 +65,7 @@ impl TriadQuality {
         }
     }
 
+    /// Semitones from the root to the fifth.
     pub fn fifth_semitones(self) -> i32 {
         match self {
             TriadQuality::Major | TriadQuality::Minor => 7,
@@ -83,6 +87,7 @@ pub enum SeventhQuality {
 }
 
 impl SeventhQuality {
+    /// Declaration order.
     pub const ALL_CASES: [SeventhQuality; 5] = [
         SeventhQuality::None,
         SeventhQuality::Minor,
@@ -91,6 +96,7 @@ impl SeventhQuality {
         SeventhQuality::Augmented,
     ];
 
+    /// As written after the triad: empty, `7`, `Δ7`, `dim7`, `aug7`.
     pub fn symbol(self) -> &'static str {
         match self {
             SeventhQuality::None => "",
@@ -147,6 +153,7 @@ pub struct ChordDegree {
 }
 
 impl ChordDegree {
+    /// A degree that may not be dropped.
     pub const fn new(letters: i32, semitones: i32) -> Self {
         ChordDegree {
             letters,
@@ -155,6 +162,7 @@ impl ChordDegree {
         }
     }
 
+    /// A degree a player may drop and still be playing this chord.
     pub const fn omissible(letters: i32, semitones: i32) -> Self {
         ChordDegree {
             letters,
@@ -213,6 +221,7 @@ pub enum Effect {
 }
 
 impl ChordExtension {
+    /// Written order. `ChordSpelling::new` sorts extensions into it.
     pub const ALL_CASES: [ChordExtension; 16] = [
         ChordExtension::Five,
         ChordExtension::Six,
@@ -232,6 +241,7 @@ impl ChordExtension {
         ChordExtension::FlatThirteen,
     ];
 
+    /// As written after the seventh.
     pub fn symbol(self) -> &'static str {
         match self {
             ChordExtension::Five => "5",
@@ -253,6 +263,7 @@ impl ChordExtension {
         }
     }
 
+    /// As said aloud.
     pub fn spoken_phrase(self) -> &'static str {
         match self {
             ChordExtension::Five => "no 3",
@@ -290,6 +301,7 @@ impl ChordExtension {
         matches!(self, ChordExtension::AddTwo | ChordExtension::AddFour)
     }
 
+    /// What this token does to the chord.
     pub fn effect(self) -> Effect {
         match self {
             // The power chord. Michael named it `C5 (no 3)`.
@@ -335,7 +347,9 @@ impl ChordExtension {
 /// implies, and only then can it be compared with what is actually being played.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ChordSpelling {
+    /// The written root.
     pub root: NoteSpelling,
+    /// The triad the quality symbol names.
     pub triad: TriadQuality,
     pub seventh: SeventhQuality,
     /// Always in `ChordExtension::ALL_CASES` order, whatever order they arrived in.
@@ -343,6 +357,7 @@ pub struct ChordSpelling {
 }
 
 impl ChordSpelling {
+    /// Builds a spelling; `extensions` are sorted into written order.
     pub fn new(
         root: NoteSpelling,
         triad: TriadQuality,
@@ -523,6 +538,7 @@ impl ChordSpelling {
 /// One written note of a chord, and where in the spelling it came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SpelledTone {
+    /// The note as written.
     pub note: NoteSpelling,
     pub degree: ChordDegree,
 }
@@ -548,6 +564,7 @@ pub struct SpelledChord {
 }
 
 impl SpelledChord {
+    /// True when any tone is written `##` or `bb`.
     pub fn uses_double_accidental(&self) -> bool {
         self.tones.iter().any(|t| t.note.is_double_accidental())
     }

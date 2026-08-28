@@ -80,6 +80,7 @@ impl ChordFit {
         }
     }
 
+    /// True only for `Exact`.
     pub fn is_exact(&self) -> bool {
         *self == ChordFit::Exact
     }
@@ -108,6 +109,7 @@ pub struct ChordReading {
     /// The same chord spoken aloud — "C sharp dim, dim 7".
     pub spoken: String,
 
+    /// Which alternate-spelling axis produced this reading.
     pub origin: SpellingOrigin,
 
     /// Ranking score. Higher wins.
@@ -126,6 +128,7 @@ pub struct ChordReading {
 }
 
 impl ChordReading {
+    /// A stable identity for the screen: the display string, unique across the catalog.
     pub fn id(&self) -> &str {
         &self.display
     }
@@ -165,9 +168,13 @@ impl ChordReading {
 /// instead of a name so "I won't guess" never looks like "I crashed".
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DeclineReason {
+    /// Nothing is held.
     Silent,
+    /// Fewer distinct pitch classes than `tuning::MINIMUM_PITCH_CLASSES`.
     SingleNote,
+    /// More distinct pitch classes than `tuning::MAXIMUM_PITCH_CLASSES`.
     TooManyPitchClasses,
+    /// Inside the window, but nothing in the vocabulary comes close enough to offer.
     NoHonestReading,
 }
 
@@ -186,7 +193,9 @@ impl DeclineReason {
 /// Everything the display needs about one sounding set.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChordAnalysis {
+    /// What was analysed.
     pub sounding: SoundingSet,
+    /// The identity of `sounding`, for notes lookup.
     pub key: ChordKey,
 
     /// Rank 1, or `None` when nothing nameable is sounding — silence, a single
@@ -196,10 +205,12 @@ pub struct ChordAnalysis {
     /// Every other honest reading, best first.
     pub alternates: Vec<ChordReading>,
 
+    /// Why there is no headline, when there is none.
     pub declined_reason: Option<DeclineReason>,
 }
 
 impl ChordAnalysis {
+    /// Builds an analysis; `key` is derived from `sounding`.
     pub fn new(
         sounding: SoundingSet,
         headline: Option<ChordReading>,
@@ -216,6 +227,7 @@ impl ChordAnalysis {
         }
     }
 
+    /// The analysis of nothing sounding: no headline, declined as `Silent`.
     pub fn silence() -> Self {
         ChordAnalysis::new(
             SoundingSet::silent(),

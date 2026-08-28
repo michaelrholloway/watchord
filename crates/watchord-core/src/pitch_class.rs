@@ -21,6 +21,7 @@ impl PitchClass {
         PitchClass(note % 12)
     }
 
+    /// The raw value, `0..12`.
     pub const fn value(self) -> u8 {
         self.0
     }
@@ -30,6 +31,7 @@ impl PitchClass {
         ((other.0 as i32 - self.0 as i32).rem_euclid(12)) as u8
     }
 
+    /// `self` moved by `semitones`, wrapping into `0..12`.
     pub fn transposed(self, semitones: i32) -> PitchClass {
         PitchClass::new(self.0 as i32 + semitones)
     }

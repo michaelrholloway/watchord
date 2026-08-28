@@ -33,9 +33,11 @@ pub type Mask = u16;
 /// `tuning::quality_commonness`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct QualityTemplate {
+    /// The triad.
     pub triad: TriadQuality,
     pub seventh: SeventhQuality,
     pub extensions: Vec<ChordExtension>,
+    /// The key into `tuning::quality_commonness`.
     pub commonness_key: &'static str,
 }
 
@@ -48,21 +50,26 @@ pub struct QualityTemplate {
 /// many notes were left out, because that is what the ranking charges for.
 #[derive(Clone, Debug)]
 pub struct CatalogEntry {
+    /// The spelling and the notes it implies; shared between its voicings.
     pub chord: Arc<SpelledChord>,
     /// Exactly the keys this entry names. Always a subset of `chord.pitch_classes`.
     pub pitch_classes: BTreeSet<PitchClass>,
+    /// The key into `tuning::quality_commonness`.
     pub commonness_key: &'static str,
 }
 
 impl CatalogEntry {
+    /// The spelling as written.
     pub fn display(&self) -> String {
         self.chord.spelling.display()
     }
 
+    /// The written root.
     pub fn root(&self) -> NoteSpelling {
         self.chord.spelling.root
     }
 
+    /// How many extension tokens the spelling carries.
     pub fn extension_count(&self) -> usize {
         self.chord.spelling.extensions.len()
     }
@@ -72,6 +79,7 @@ impl CatalogEntry {
         self.chord.pitch_classes.len() - self.pitch_classes.len()
     }
 
+    /// The keys this entry names, as a fingerprint.
     pub fn mask(&self) -> Mask {
         QualityCatalog::mask(self.pitch_classes.iter().copied())
     }
@@ -219,6 +227,7 @@ impl QualityCatalog {
         sets
     }
 
+    /// Every quality the app names: each base pair with each of its extension sets.
     pub fn templates() -> Vec<QualityTemplate> {
         Self::base_pairs()
             .iter()
@@ -389,6 +398,7 @@ impl QualityCatalog {
         lhs_display < rhs_display
     }
 
+    /// Fingerprints a set of pitch classes, one bit per key.
     pub fn mask(pitch_classes: impl IntoIterator<Item = PitchClass>) -> Mask {
         pitch_classes
             .into_iter()

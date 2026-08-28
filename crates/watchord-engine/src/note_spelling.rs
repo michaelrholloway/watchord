@@ -32,6 +32,7 @@ impl NoteLetter {
         NoteLetter::B,
     ];
 
+    /// The letter as written: `"C"`.
     pub fn character(self) -> &'static str {
         match self {
             NoteLetter::C => "C",
@@ -72,6 +73,7 @@ impl NoteLetter {
 /// to generate them and rank them rather than to read one off the wire.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NoteSpelling {
+    /// The letter name.
     pub letter: NoteLetter,
     /// Semitones away from the natural letter: `-2` double flat through `+2`
     /// double sharp.
@@ -93,6 +95,7 @@ impl NoteSpelling {
         Some(NoteSpelling { letter, alteration })
     }
 
+    /// The pitch class this spelling sounds.
     pub fn pitch_class(&self) -> PitchClass {
         PitchClass::new(self.letter.natural_pitch_class() + self.alteration)
     }
@@ -115,10 +118,12 @@ impl NoteSpelling {
         )
     }
 
+    /// True for `##` and `bb`.
     pub fn is_double_accidental(&self) -> bool {
         self.alteration.abs() == 2
     }
 
+    /// `bb`, `b`, empty, `#`, `##` for `-2..=2`.
     pub fn accidental_symbol(alteration: i32) -> &'static str {
         match alteration {
             -2 => "bb",
@@ -129,6 +134,7 @@ impl NoteSpelling {
         }
     }
 
+    /// The accidental said aloud, with its leading space: `" sharp"`.
     pub fn spoken_accidental(alteration: i32) -> &'static str {
         match alteration {
             -2 => " double flat",

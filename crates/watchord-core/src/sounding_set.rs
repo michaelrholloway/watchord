@@ -18,6 +18,7 @@ pub struct SoundingSet {
 }
 
 impl SoundingSet {
+    /// Builds a set from any notes; duplicates collapse and the order is ascending.
     pub fn new(midi_notes: impl IntoIterator<Item = u8>) -> Self {
         let set: BTreeSet<u8> = midi_notes.into_iter().collect();
         SoundingSet {
@@ -35,6 +36,7 @@ impl SoundingSet {
         &self.midi_notes
     }
 
+    /// The distinct pitch classes sounding, ascending.
     pub fn pitch_classes(&self) -> BTreeSet<PitchClass> {
         self.midi_notes
             .iter()
@@ -47,14 +49,17 @@ impl SoundingSet {
         self.midi_notes.first().copied()
     }
 
+    /// The pitch class of the lowest sounding note, or `None` when nothing is held.
     pub fn bass_pitch_class(&self) -> Option<PitchClass> {
         self.bass().map(PitchClass::from_midi_note)
     }
 
+    /// The identity of what is sounding: its pitch-class set as a `ChordKey`.
     pub fn key(&self) -> ChordKey {
         ChordKey::new(self.pitch_classes())
     }
 
+    /// True when nothing is held.
     pub fn is_empty(&self) -> bool {
         self.midi_notes.is_empty()
     }
