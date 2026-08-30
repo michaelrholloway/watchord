@@ -61,7 +61,7 @@ How well a reading matches the keys, drawn on screen beside the name. Four tiers
 | ---- | ------- | ----- |
 | `exact` | the reading's keys and the sounding keys are equal | *(nothing)* |
 | `missing` | every sounding key is explained; the chord has tones you did not play | `·no5 ·no11` |
-| `plus` | the whole chord is sounding, plus keys it cannot explain | `·+1` |
+| `plus` | the whole chord is sounding, plus keys it cannot explain | `·+F#` (the extra key, named) |
 | `nearest` | neither — the closest thing the vocabulary has | `≈` |
 
 Michael, 2026-08-10: *"i would like for program to always try to suggest a chord, or
