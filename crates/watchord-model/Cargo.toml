@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 watchord-core = { workspace = true, features = ["serde"] }
+watchord-theory = { workspace = true }
 serde = { workspace = true }
 uuid = { workspace = true }
 

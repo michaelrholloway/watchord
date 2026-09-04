@@ -117,6 +117,55 @@ impl Annotations {
     }
 }
 
+/// One entry of the history strip: the name it settled under, its identity
+/// for note lookups and export, the seconds since the entry before it
+/// (`None` for the first entry this session), and the voice leading from
+/// that entry (`None` likewise).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrameHistoryEntry {
+    /// The headline name it settled under, re-derived so it never drifts from
+    /// what the engine says today.
+    pub name: String,
+    /// The pitch-class identity, for looking up its notes.
+    pub key: ChordKey,
+    /// When it settled, whole seconds since the Unix epoch — for export's
+    /// time column. The strip itself only ever shows the gap.
+    pub at_unix_seconds: u64,
+    /// The gap since the entry before it, in whole seconds.
+    pub seconds_since_previous: Option<u64>,
+    /// How far the hand moved from the entry before it.
+    pub voice_leading: Option<FrameVoiceLeading>,
+}
+
+/// Voice leading between one history entry and the one before it — the
+/// assignment of smallest total semitone motion. `watchord-theory`'s
+/// `VoiceLeading`, carried as plain data so `Frame` stays free of that
+/// crate's own types on the wire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrameVoiceLeading {
+    /// The sum of every semitone move.
+    pub total_semitones: u32,
+    /// How many notes moved by exactly zero semitones.
+    pub common_tones_kept: usize,
+    /// The largest single move.
+    pub largest_move: u32,
+}
+
+/// While the display is stepped into history rather than live: which entry
+/// (1-based, oldest first) out of the fixed `total` — the `HISTORY n/64`
+/// plate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryStep {
+    /// 1-based position of the stepped-to entry within history, oldest first.
+    pub index: usize,
+    /// The fixed denominator on the plate — `HISTORY_CAPACITY`, not how many
+    /// entries are actually held.
+    pub total: usize,
+}
+
 /// Everything the screen shows, as one plain value.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -158,13 +207,17 @@ pub struct Frame {
     pub notes_total: usize,
     /// The text in the note field.
     pub draft: String,
+    /// The last up to 64 settled non-empty sounding sets, oldest first.
+    pub history: Vec<FrameHistoryEntry>,
+    /// `Some` while the display is stepped into `history` instead of live.
+    pub history_step: Option<HistoryStep>,
 }
 
 impl Frame {
     /// Every label a renderer must emit, lowercase. A skin writes them in
     /// UPPERCASE, `--print` writes them as they are. A test greps each plain
     /// snapshot and the print output for each one.
-    pub const LABELS: [&'static str; 26] = [
+    pub const LABELS: [&'static str; 28] = [
         "screen",
         "banner",
         "status",
@@ -186,6 +239,8 @@ impl Frame {
         "claimed",
         "alternate",
         "annotations",
+        "history",
+        "voice leading",
         "note",
         "notes total",
         "draft",
@@ -194,7 +249,7 @@ impl Frame {
     ];
 
     /// The labels the Now Playing screen carries: everything but the groups.
-    pub const NOW_PLAYING_LABELS: [&'static str; 24] = [
+    pub const NOW_PLAYING_LABELS: [&'static str; 26] = [
         "screen",
         "banner",
         "status",
@@ -216,6 +271,8 @@ impl Frame {
         "claimed",
         "alternate",
         "annotations",
+        "history",
+        "voice leading",
         "note",
         "notes total",
         "draft",
@@ -295,5 +352,15 @@ impl Frame {
             .map(|n| n.to_string())
             .collect::<Vec<_>>()
             .join(" ")
+    }
+
+    /// The history entry currently on screen: the stepped-to entry while
+    /// `history_step` is set, otherwise the newest (live) one. `None` before
+    /// anything has been played this session.
+    pub fn displayed_history_entry(&self) -> Option<&FrameHistoryEntry> {
+        match self.history_step {
+            Some(step) => self.history.get(step.index - 1),
+            None => self.history.last(),
+        }
     }
 }
