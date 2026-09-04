@@ -13,10 +13,12 @@
 
 pub mod fakes;
 pub mod frame;
+pub mod notes;
 
 pub use frame::{
     Annotations, Frame, FrameHistoryEntry, FrameReading, FrameState, FrameVoiceLeading, HistoryStep,
 };
+pub use notes::NotesSort;
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -25,9 +27,10 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use watchord_core::tuning;
 use watchord_core::{
-    ChordAnalysis, ChordKey, ChordNaming, ChordNote, DeclineReason, NoteName, NoteStoring,
-    ReadingDisplay, SoundingSet, SoundingSetSource,
+    ChordAnalysis, ChordKey, ChordNaming, ChordNote, ControlEvent, DeclineReason, NoteName,
+    NoteStoring, PedalKind, ReadingDisplay, SoundingSet, SoundingSetSource,
 };
 use watchord_theory::voice_leading::{self, VoiceLeading};
 
@@ -91,6 +94,8 @@ pub enum ModelEvent {
     Sounding(SoundingSet),
     /// The whole current set of attached input names.
     Inputs(Vec<String>),
+    /// A pedal moved up or down.
+    Control(ControlEvent),
 }
 
 /// The two forwarding threads and the channel they feed, alive between
@@ -124,6 +129,13 @@ struct HistoryEntry {
     voice_leading: Option<VoiceLeading>,
 }
 
+/// The settle window's floor, in milliseconds.
+pub const SETTLE_MIN_MS: u64 = tuning::SETTLE_MIN_MS;
+/// The settle window's ceiling, in milliseconds.
+pub const SETTLE_MAX_MS: u64 = tuning::SETTLE_MAX_MS;
+/// The settle window's step, in milliseconds.
+pub const SETTLE_STEP_MS: u64 = tuning::SETTLE_STEP_MS;
+
 /// Everything on screen.
 pub struct AppModel {
     /// Which screen is showing. Switching does not disturb anything else on this
@@ -149,6 +161,17 @@ pub struct AppModel {
     /// The text in the always-present note field.
     pub draft_note_text: String,
 
+    /// The id of the note `draft_note_text` is editing, or `None` when it is
+    /// drafting a new one. Set by [`AppModel::begin_edit`].
+    editing_note_id: Option<String>,
+
+    /// The search query on All Notes, typed live. Filters `note_groups` by
+    /// text, tag, or chord name (spec #9).
+    pub search_text: String,
+
+    /// Which of the three orders All Notes reads in.
+    pub notes_sort: NotesSort,
+
     /// A line of plain words when something outside the model's control went
     /// wrong — no MIDI available, the notes file could not be read. Never a
     /// crash, never a blank screen.
@@ -162,6 +185,21 @@ pub struct AppModel {
     /// The MIDI devices currently attached, by display name. Empty means nothing
     /// is plugged in — a normal state the screen has to be able to say.
     connected_inputs: Vec<String>,
+
+    /// The sustain pedal, as the source last reported it.
+    sustain: bool,
+    /// The sostenuto pedal, as the source last reported it.
+    sostenuto: bool,
+    /// The soft pedal, as the source last reported it.
+    soft: bool,
+    /// The settle window, adjusted live by two keys.
+    settle: Duration,
+    /// True while arpeggio mode is on.
+    arpeggio: bool,
+    /// The notes accumulated so far this arpeggio, while `arpeggio` is on.
+    /// Empty otherwise. A key going fully up, or the sustain pedal lifting,
+    /// clears it — the next note-on starts a fresh chord.
+    arpeggio_notes: SoundingSet,
 
     naming: Arc<dyn ChordNaming>,
     source: Box<dyn SoundingSetSource>,
@@ -206,9 +244,18 @@ impl AppModel {
             notes_for_displayed_chord: Vec::new(),
             note_groups: Vec::new(),
             draft_note_text: String::new(),
+            editing_note_id: None,
+            search_text: String::new(),
+            notes_sort: NotesSort::default(),
             status_message: None,
             banner: None,
             connected_inputs: Vec::new(),
+            sustain: false,
+            sostenuto: false,
+            soft: false,
+            settle: tuning::SETTLE_INTERVAL,
+            arpeggio: false,
+            arpeggio_notes: SoundingSet::silent(),
             naming,
             source,
             store,
@@ -239,14 +286,17 @@ impl AppModel {
         let (tx, events) = mpsc::channel();
         let sounding = self.source.sounding_sets();
         let inputs = self.source.connected_inputs();
-        // Two forwarding threads, one per stream. Separate because the two are
+        let controls = self.source.controls();
+        // Three forwarding threads, one per stream. Separate because they are
         // genuinely independent: a keyboard can appear and disappear without a
-        // note being played, and a note can arrive from a source that was
-        // already connected at launch. Each thread ends when its sender side is
-        // dropped, which `stop()` on every source does.
+        // note being played, a pedal can move with no note sounding, and a
+        // note can arrive from a source that was already connected at launch.
+        // Each thread ends when its sender side is dropped, which `stop()` on
+        // every source does.
         let threads = vec![
             forward(sounding, tx.clone(), ModelEvent::Sounding),
-            forward(inputs, tx, ModelEvent::Inputs),
+            forward(inputs, tx.clone(), ModelEvent::Inputs),
+            forward(controls, tx, ModelEvent::Control),
         ];
         self.listening = Some(Listening { events, threads });
     }
@@ -313,6 +363,32 @@ impl AppModel {
         match event {
             ModelEvent::Sounding(sounding) => self.receive(&sounding),
             ModelEvent::Inputs(names) => self.connected_inputs = names,
+            ModelEvent::Control(control) => self.apply_control(control),
+        }
+    }
+
+    /// Applies one pedal moving up or down. Sostenuto toggles arpeggio mode on
+    /// its down edge only, so a press-and-release toggles once, not twice.
+    /// Sustain lifting while arpeggio is on settles the accumulated set — the
+    /// next note-on starts a fresh chord.
+    fn apply_control(&mut self, control: ControlEvent) {
+        match control.pedal {
+            PedalKind::Sustain => {
+                self.sustain = control.down;
+                if !control.down && self.arpeggio {
+                    self.arpeggio_notes = SoundingSet::silent();
+                }
+            }
+            PedalKind::Sostenuto => {
+                self.sostenuto = control.down;
+                if control.down {
+                    self.arpeggio = !self.arpeggio;
+                    if !self.arpeggio {
+                        self.arpeggio_notes = SoundingSet::silent();
+                    }
+                }
+            }
+            PedalKind::Soft => self.soft = control.down,
         }
     }
 
@@ -327,14 +403,36 @@ impl AppModel {
     /// about it with his hands off the keys. Every non-empty set replaces the
     /// display, including one the engine declines to name: a decline is a normal
     /// answer and gets shown, in words.
+    ///
+    /// While arpeggio mode is on, `sounding` is unioned onto the notes already
+    /// accumulated this arpeggio rather than replacing the display outright —
+    /// that is the whole of "a note-on adds and a note-off does not remove
+    /// it," since a key coming up would otherwise shrink what the source
+    /// reports. A key clearing (every key up) empties the accumulator here,
+    /// via the early return below, so the next note-on starts fresh.
     pub fn receive(&mut self, sounding: &SoundingSet) {
         if sounding.is_empty() {
             // Nothing has been played yet: there is no chord to hold, so leave
             // `is_released` false and let the skin show its waiting line.
             self.is_released = self.displayed.is_some();
+            if self.arpeggio {
+                self.arpeggio_notes = SoundingSet::silent();
+            }
             return;
         }
-        let analysis = self.naming.analyze(sounding);
+        let effective = if self.arpeggio {
+            self.arpeggio_notes = SoundingSet::new(
+                self.arpeggio_notes
+                    .midi_notes()
+                    .iter()
+                    .chain(sounding.midi_notes())
+                    .copied(),
+            );
+            self.arpeggio_notes.clone()
+        } else {
+            sounding.clone()
+        };
+        let analysis = self.naming.analyze(&effective);
         let key_changed = self
             .displayed
             .as_ref()
@@ -344,7 +442,10 @@ impl AppModel {
         if key_changed {
             self.reload_notes_for_displayed_chord();
         }
-        self.push_history(sounding.clone());
+        // The settled chord is `effective` (accumulated while arpeggio is on),
+        // not the raw `sounding` delta this call received — history records
+        // what was actually displayed and named.
+        self.push_history(effective);
         // Any new sounding set returns the display to live.
         self.history_cursor = None;
     }
@@ -511,6 +612,59 @@ impl AppModel {
         self.banner.is_none() && self.connected_inputs.is_empty()
     }
 
+    /// Restricts the source to one named input, or clears the restriction to
+    /// listen to everything. Live — no restart. The picker calls this with a
+    /// name off `connected_inputs`.
+    pub fn select_input(&mut self, name: Option<String>) {
+        self.source.select_input(name);
+    }
+
+    // MARK: - Pedals, settle, arpeggio
+
+    /// The sustain pedal, as the source last reported it.
+    pub fn is_sustain_down(&self) -> bool {
+        self.sustain
+    }
+
+    /// The sostenuto pedal, as the source last reported it.
+    pub fn is_sostenuto_down(&self) -> bool {
+        self.sostenuto
+    }
+
+    /// The soft pedal, as the source last reported it.
+    pub fn is_soft_down(&self) -> bool {
+        self.soft
+    }
+
+    /// True while arpeggio mode is on.
+    pub fn is_arpeggio(&self) -> bool {
+        self.arpeggio
+    }
+
+    /// The settle window, in milliseconds — what the SETTLE plate reads.
+    pub fn settle_ms(&self) -> u64 {
+        self.settle.as_millis() as u64
+    }
+
+    /// Widens the settle window by one step, clamped at `SETTLE_MAX_MS`.
+    pub fn increase_settle(&mut self) {
+        self.set_settle_ms((self.settle_ms() + SETTLE_STEP_MS).min(SETTLE_MAX_MS));
+    }
+
+    /// Narrows the settle window by one step, clamped at `SETTLE_MIN_MS`.
+    pub fn decrease_settle(&mut self) {
+        self.set_settle_ms(
+            self.settle_ms()
+                .saturating_sub(SETTLE_STEP_MS)
+                .max(SETTLE_MIN_MS),
+        );
+    }
+
+    fn set_settle_ms(&mut self, ms: u64) {
+        self.settle = Duration::from_millis(ms);
+        self.source.set_settle(self.settle);
+    }
+
     /// The headline as the screen writes it — the name in slash form, the `≈`
     /// that goes beside it, and the `·no5` detail that goes under it. `None`
     /// when the engine declined to name; `headline_text` still says something.
@@ -616,10 +770,50 @@ impl AppModel {
         if key.is_empty() { None } else { Some(key) }
     }
 
-    /// True when Enter would save something: a chord to attach to and a
-    /// draft that is not blank.
+    /// True when Enter would save something: a non-blank draft, and — unless
+    /// it is editing an existing note, which needs no live chord — a chord to
+    /// attach it to.
     pub fn can_commit_note(&self) -> bool {
-        self.note_target_key().is_some() && !self.draft_note_text.trim().is_empty()
+        if self.draft_note_text.trim().is_empty() {
+            return false;
+        }
+        self.editing_note_id.is_some() || self.note_target_key().is_some()
+    }
+
+    // MARK: - Editing
+
+    /// True while the field is editing an existing note rather than drafting
+    /// a new one.
+    pub fn is_editing(&self) -> bool {
+        self.editing_note_id.is_some()
+    }
+
+    /// Loads `id`'s text into the field for editing. Looks across both the
+    /// notes on the displayed chord and every group, so a note found on
+    /// either screen can be edited. A no-op when `id` is not found.
+    pub fn begin_edit(&mut self, id: &str) {
+        let found = self
+            .notes_for_displayed_chord
+            .iter()
+            .chain(self.note_groups.iter().flat_map(|g| g.notes.iter()))
+            .find(|n| n.id == id)
+            .cloned();
+        if let Some(note) = found {
+            self.draft_note_text = note.text;
+            self.editing_note_id = Some(note.id);
+        }
+    }
+
+    /// Leaves editing and clears the field. A no-op when not editing.
+    pub fn cancel_edit(&mut self) {
+        if self.editing_note_id.take().is_some() {
+            self.draft_note_text.clear();
+        }
+    }
+
+    /// Steps to the next of the three sort orders.
+    pub fn cycle_notes_sort(&mut self) {
+        self.notes_sort = self.notes_sort.next();
     }
 
     // MARK: - The frame
@@ -674,6 +868,8 @@ impl AppModel {
             index: i + 1,
             total: HISTORY_CAPACITY,
         });
+        let groups = notes::filter_groups(self.note_groups.clone(), &self.search_text);
+        let groups = notes::sort_groups(groups, self.notes_sort);
         Frame {
             screen: self.screen,
             banner: self.banner.clone(),
@@ -696,11 +892,19 @@ impl AppModel {
             alternates,
             annotations: Annotations::default(),
             notes: self.notes_for_displayed_chord.clone(),
-            groups: self.note_groups.clone(),
+            groups,
             notes_total: self.total_note_count(),
             draft: self.draft_note_text.clone(),
             history,
             history_step,
+            search: self.search_text.clone(),
+            notes_sort: self.notes_sort,
+            editing: self.editing_note_id.is_some(),
+            sustain: self.sustain,
+            sostenuto: self.sostenuto,
+            soft: self.soft,
+            settle_ms: self.settle_ms(),
+            arpeggio: self.arpeggio,
         }
     }
 
@@ -713,12 +917,27 @@ impl AppModel {
     /// later resurfaces under `Am7`.
     pub fn commit_note(&mut self) {
         let text = self.draft_note_text.trim().to_string();
-        let Some(key) = self.note_target_key() else {
-            return;
-        };
         if text.is_empty() {
             return;
         }
+        if let Some(id) = self.editing_note_id.clone() {
+            match self.store.update(&id, &text) {
+                Ok(_) => {
+                    self.draft_note_text.clear();
+                    self.editing_note_id = None;
+                    self.status_message = None;
+                    self.reload_notes_for_displayed_chord();
+                    self.reload_all_notes();
+                }
+                Err(error) => {
+                    self.status_message = Some(format!("Could not save the note — {error}"));
+                }
+            }
+            return;
+        }
+        let Some(key) = self.note_target_key() else {
+            return;
+        };
         let spelling = self.headline_text();
         match self.store.add(&text, &key, &spelling) {
             Ok(_) => {

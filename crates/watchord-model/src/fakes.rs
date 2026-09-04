@@ -11,13 +11,13 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use watchord_core::tuning;
 use watchord_core::{
     ChordAnalysis, ChordFit, ChordKey, ChordNaming, ChordNote, ChordReading, ChordRoot,
-    DeclineReason, NoteStoring, PitchClass, SoundingSet, SoundingSetSource, SourceError,
-    SpellingOrigin, StoreError,
+    ControlEvent, DeclineReason, NoteStoring, PedalKind, PitchClass, SoundingSet,
+    SoundingSetSource, SourceError, SpellingOrigin, StoreError,
 };
 
 /// What the real store says when asked to save against the empty chord key.
@@ -32,10 +32,17 @@ struct ScriptedInner {
     sounding_rx: Mutex<Option<Receiver<SoundingSet>>>,
     inputs_tx: Mutex<Option<Sender<Vec<String>>>>,
     inputs_rx: Mutex<Option<Receiver<Vec<String>>>>,
+    controls_tx: Mutex<Option<Sender<ControlEvent>>>,
+    controls_rx: Mutex<Option<Receiver<ControlEvent>>>,
     script: Vec<SoundingSet>,
     start_error: Option<String>,
     started: Mutex<bool>,
     stopped: Mutex<bool>,
+    /// Every call the model made to `select_input`, in order. `Some(None)`
+    /// means the restriction was cleared.
+    selected_inputs: Mutex<Vec<Option<String>>>,
+    /// Every call the model made to `set_settle`, in order.
+    settle_calls: Mutex<Vec<Duration>>,
 }
 
 /// A `SoundingSetSource` driven by hand.
@@ -71,16 +78,21 @@ impl ScriptedSoundingSetSource {
     fn build(script: Vec<SoundingSet>, start_error: Option<String>) -> Self {
         let (sounding_tx, sounding_rx) = mpsc::channel();
         let (inputs_tx, inputs_rx) = mpsc::channel();
+        let (controls_tx, controls_rx) = mpsc::channel();
         ScriptedSoundingSetSource {
             inner: Arc::new(ScriptedInner {
                 sounding_tx: Mutex::new(Some(sounding_tx)),
                 sounding_rx: Mutex::new(Some(sounding_rx)),
                 inputs_tx: Mutex::new(Some(inputs_tx)),
                 inputs_rx: Mutex::new(Some(inputs_rx)),
+                controls_tx: Mutex::new(Some(controls_tx)),
+                controls_rx: Mutex::new(Some(controls_rx)),
                 script,
                 start_error,
                 started: Mutex::new(false),
                 stopped: Mutex::new(false),
+                selected_inputs: Mutex::new(Vec::new()),
+                settle_calls: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -118,6 +130,30 @@ impl ScriptedSoundingSetSource {
             let _ = tx.send(names.iter().map(|s| s.to_string()).collect());
         }
     }
+
+    /// Pushes one pedal moving up or down, as the source's third stream would.
+    pub fn pedal(&self, pedal: PedalKind, down: bool) {
+        if let Some(tx) = lock(&self.inner.controls_tx).as_ref() {
+            let _ = tx.send(ControlEvent { pedal, down });
+        }
+    }
+
+    /// Every call the model made to `select_input`, in order — `Some(None)`
+    /// means the restriction was cleared. For asserting the picker actually
+    /// reached the source.
+    pub fn selected_inputs(&self) -> Vec<Option<String>> {
+        lock(&self.inner.selected_inputs).clone()
+    }
+
+    /// The most recent `select_input` call, or `None` if it was never called.
+    pub fn last_selected_input(&self) -> Option<Option<String>> {
+        lock(&self.inner.selected_inputs).last().cloned()
+    }
+
+    /// Every settle window the model asked for, in order.
+    pub fn settle_calls(&self) -> Vec<Duration> {
+        lock(&self.inner.settle_calls).clone()
+    }
 }
 
 impl SoundingSetSource for ScriptedSoundingSetSource {
@@ -129,6 +165,12 @@ impl SoundingSetSource for ScriptedSoundingSetSource {
 
     fn connected_inputs(&mut self) -> Receiver<Vec<String>> {
         lock(&self.inner.inputs_rx)
+            .take()
+            .unwrap_or_else(|| mpsc::channel().1)
+    }
+
+    fn controls(&mut self) -> Receiver<ControlEvent> {
+        lock(&self.inner.controls_rx)
             .take()
             .unwrap_or_else(|| mpsc::channel().1)
     }
@@ -146,9 +188,18 @@ impl SoundingSetSource for ScriptedSoundingSetSource {
 
     fn stop(&mut self) {
         *lock(&self.inner.stopped) = true;
-        // Dropping the senders closes both channels, so a consumer's loop ends.
+        // Dropping the senders closes every channel, so a consumer's loop ends.
         lock(&self.inner.sounding_tx).take();
         lock(&self.inner.inputs_tx).take();
+        lock(&self.inner.controls_tx).take();
+    }
+
+    fn set_settle(&mut self, settle: Duration) {
+        lock(&self.inner.settle_calls).push(settle);
+    }
+
+    fn select_input(&mut self, name: Option<String>) {
+        lock(&self.inner.selected_inputs).push(name);
     }
 }
 
@@ -242,6 +293,18 @@ impl NoteStoring for InMemoryNoteStore {
         );
         lock(&self.inner.storage).push(note.clone());
         Ok(note)
+    }
+
+    fn update(&self, id: &str, text: &str) -> Result<ChordNote, StoreError> {
+        if let Some(message) = &self.inner.failure {
+            return Err(StoreError::Io(message.clone()));
+        }
+        let mut storage = lock(&self.inner.storage);
+        let Some(existing) = storage.iter_mut().find(|n| n.id == id) else {
+            return Err(StoreError::NoSuchNote(id.to_string()));
+        };
+        existing.text = text.to_string();
+        Ok(existing.clone())
     }
 
     fn delete(&self, id: &str) -> Result<(), StoreError> {

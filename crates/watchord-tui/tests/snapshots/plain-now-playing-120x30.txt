@@ -1,9 +1,11 @@
- WATCHORD   NOTES TOTAL 3
+ WATCHORD   NOTES TOTAL 3   NOTES 2
  INPUT fake   STATE held   INPUTS —
  BANNER         fake input — no MIDI hardware is being read
  STATUS         —
  SCREEN         [Now Playing]    All Notes
 
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ PICKER   press i to choose an input
  HEADLINE       C6
  APPROXIMATION  —
  SPOKEN         C major 6
@@ -20,11 +22,9 @@
    3    CΔ6           enharmonic exact               89    C    C E G A               C major 6, major 7
 
  ANNOTATIONS    none yet
-
- HISTORY 1  C6
- VOICE LEADING  —
+ HISTORY 1  C6   VOICE LEADING —
+ EDITING        —
  NOTES 2
    try it with the 9 on top                                                                                      delete
-   sounds like the Rhodes on Voodoo                                                                              delete
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DELETE · X EXPORT · CTRL-X EXPORT JSON · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DEL · E EDIT · S SORT · X EXPORT · ^X JSON · SHIFT+ENTER NL · ENTER · Q QUIT

@@ -26,8 +26,24 @@ pub const MAXIMUM_PITCH_CLASSES: usize = 8;
 /// MIDI CC number for the sustain pedal.
 pub const SUSTAIN_CONTROLLER: u8 = 64;
 
-/// CC value at or above which sustain counts as down.
+/// MIDI CC number for the sostenuto pedal.
+pub const SOSTENUTO_CONTROLLER: u8 = 66;
+
+/// MIDI CC number for the soft pedal.
+pub const SOFT_PEDAL_CONTROLLER: u8 = 67;
+
+/// CC value at or above which a pedal counts as down — sustain, sostenuto, and
+/// soft alike (ticket 13).
 pub const SUSTAIN_ON_THRESHOLD: u8 = 64;
+
+/// The settle window's floor, in milliseconds. Two keys adjust it live.
+pub const SETTLE_MIN_MS: u64 = 10;
+
+/// The settle window's ceiling, in milliseconds.
+pub const SETTLE_MAX_MS: u64 = 500;
+
+/// The settle window's step, in milliseconds.
+pub const SETTLE_STEP_MS: u64 = 10;
 
 /// Ranking weights.
 pub mod weight {

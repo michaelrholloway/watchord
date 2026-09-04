@@ -16,7 +16,7 @@ use watchord_core::{
     SpellingOrigin,
 };
 
-use crate::{NoteGroup, Screen};
+use crate::{NoteGroup, NotesSort, Screen};
 
 /// What the STATE plate reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -211,13 +211,35 @@ pub struct Frame {
     pub history: Vec<FrameHistoryEntry>,
     /// `Some` while the display is stepped into `history` instead of live.
     pub history_step: Option<HistoryStep>,
+    /// The search query on All Notes, applied to `groups` live as typed.
+    /// Spec #9 (ticket #15).
+    pub search: String,
+    /// Which of the three orders `groups` is sorted by.
+    pub notes_sort: NotesSort,
+    /// True when the note field is editing an existing note rather than
+    /// drafting a new one.
+    pub editing: bool,
+    /// The sustain pedal (CC64), as the source last reported it.
+    pub sustain: bool,
+    /// The sostenuto pedal (CC66), as the source last reported it. Toggles
+    /// `arpeggio` on its down edge.
+    pub sostenuto: bool,
+    /// The soft pedal (CC67), as the source last reported it.
+    pub soft: bool,
+    /// The settle window, in milliseconds. Two keys adjust it, 10 ms at a
+    /// time, from 10 to 500.
+    pub settle_ms: u64,
+    /// True while arpeggio mode is on: a note-on adds to the sounding set and
+    /// a note-off does not remove it, until the sustain pedal lifts or the
+    /// keys go fully up.
+    pub arpeggio: bool,
 }
 
 impl Frame {
     /// Every label a renderer must emit, lowercase. A skin writes them in
     /// UPPERCASE, `--print` writes them as they are. A test greps each plain
     /// snapshot and the print output for each one.
-    pub const LABELS: [&'static str; 28] = [
+    pub const LABELS: [&'static str; 37] = [
         "screen",
         "banner",
         "status",
@@ -246,10 +268,19 @@ impl Frame {
         "draft",
         "group",
         "written as",
+        "editing",
+        "search",
+        "sort",
+        "tags",
+        "sustain",
+        "sostenuto",
+        "soft",
+        "settle",
+        "arpeggio",
     ];
 
     /// The labels the Now Playing screen carries: everything but the groups.
-    pub const NOW_PLAYING_LABELS: [&'static str; 26] = [
+    pub const NOW_PLAYING_LABELS: [&'static str; 32] = [
         "screen",
         "banner",
         "status",
@@ -276,10 +307,16 @@ impl Frame {
         "note",
         "notes total",
         "draft",
+        "editing",
+        "sustain",
+        "sostenuto",
+        "soft",
+        "settle",
+        "arpeggio",
     ];
 
     /// The labels the All Notes screen carries: the head block and the groups.
-    pub const ALL_NOTES_LABELS: [&'static str; 18] = [
+    pub const ALL_NOTES_LABELS: [&'static str; 26] = [
         "screen",
         "banner",
         "status",
@@ -298,6 +335,14 @@ impl Frame {
         "note",
         "written as",
         "notes total",
+        "search",
+        "sort",
+        "tags",
+        "sustain",
+        "sostenuto",
+        "soft",
+        "settle",
+        "arpeggio",
     ];
 
     /// True when the keys are up and the display is holding the last chord.

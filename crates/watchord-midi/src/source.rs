@@ -23,14 +23,23 @@
 
 use std::collections::BTreeMap;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use midir::{Ignore, MidiInput, MidiInputConnection};
 use watchord_core::tuning;
-use watchord_core::{SoundingSet, SoundingSetSource, SourceError};
+use watchord_core::{ControlEvent, SoundingSet, SoundingSetSource, SourceError};
 
 use crate::{MidiEvent, SettleRelay, decode};
+
+/// A lock whose poisoning is not a reason to stop: the guarded state is plain
+/// data and a panicking thread elsewhere must not cascade.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// How often the inputs are re-enumerated for hot-plug.
 pub const HOT_PLUG_INTERVAL: Duration = Duration::from_secs(2);
@@ -48,15 +57,23 @@ struct Running {
 pub struct MidiSource {
     client_name: String,
     /// `--input <name>`: connect only to inputs whose name contains this,
-    /// case-insensitively. `None` connects to every input.
+    /// case-insensitively. `None` connects to every input. The construction-time
+    /// default; `select_input` overrides it live via `live_filter`.
     filter: Option<String>,
-    settle: Duration,
+    /// The picker's live choice, read by the watch thread every
+    /// `HOT_PLUG_INTERVAL`. `None` here falls back to `filter`.
+    live_filter: Arc<Mutex<Option<String>>>,
+    /// The settle window, read by the relay thread on every loop turn so
+    /// `set_settle` takes effect without a restart.
+    settle: Arc<Mutex<Duration>>,
     /// The sounding-set channel. The sender is the one the relay thread clones;
     /// the receiver is handed out once by `sounding_sets()`. `stop()` replaces
     /// the pair, which is what closes the consumer's end.
     sounding: (Sender<SoundingSet>, Option<Receiver<SoundingSet>>),
     /// The connected-inputs channel, on the same terms.
     inputs: (Sender<Vec<String>>, Option<Receiver<Vec<String>>>),
+    /// The pedal-control channel, on the same terms.
+    controls: (Sender<ControlEvent>, Option<Receiver<ControlEvent>>),
     running: Option<Running>,
 }
 
@@ -77,12 +94,15 @@ impl MidiSource {
     pub fn with_settle(filter: Option<String>, settle: Duration) -> Self {
         let sounding = mpsc::channel();
         let inputs = mpsc::channel();
+        let controls = mpsc::channel();
         MidiSource {
             client_name: "watchord".to_string(),
+            live_filter: Arc::new(Mutex::new(filter.clone())),
             filter,
-            settle,
+            settle: Arc::new(Mutex::new(settle)),
             sounding: (sounding.0, Some(sounding.1)),
             inputs: (inputs.0, Some(inputs.1)),
+            controls: (controls.0, Some(controls.1)),
             running: None,
         }
     }
@@ -118,6 +138,10 @@ impl SoundingSetSource for MidiSource {
         self.inputs.1.take().unwrap_or_else(|| mpsc::channel().1)
     }
 
+    fn controls(&mut self) -> Receiver<ControlEvent> {
+        self.controls.1.take().unwrap_or_else(|| mpsc::channel().1)
+    }
+
     fn start(&mut self) -> Result<(), SourceError> {
         if self.running.is_some() {
             return Ok(());
@@ -130,14 +154,25 @@ impl SoundingSetSource for MidiSource {
 
         let relay = {
             let sounding_tx = self.sounding.0.clone();
-            let settle = self.settle;
-            thread::spawn(move || run_relay(events_rx, sounding_tx, settle))
+            let controls_tx = self.controls.0.clone();
+            let settle = Arc::clone(&self.settle);
+            thread::spawn(move || run_relay(events_rx, sounding_tx, controls_tx, settle))
         };
         let watch = {
             let client_name = self.client_name.clone();
             let filter = self.filter.clone();
+            let live_filter = Arc::clone(&self.live_filter);
             let inputs_tx = self.inputs.0.clone();
-            thread::spawn(move || run_watch(client_name, filter, events_tx, inputs_tx, stop_rx))
+            thread::spawn(move || {
+                run_watch(
+                    client_name,
+                    filter,
+                    live_filter,
+                    events_tx,
+                    inputs_tx,
+                    stop_rx,
+                )
+            })
         };
         self.running = Some(Running {
             stop: stop_tx,
@@ -162,11 +197,11 @@ impl SoundingSetSource for MidiSource {
         drop(running.stop);
         let _ = running.watch.join();
         let _ = running.relay.join();
-        // The threads held clones of the two senders and have now dropped
+        // The threads held clones of the three senders and have now dropped
         // them. Dropping the originals is what disconnects the receivers a
         // consumer is holding — without it, a forwarding loop on the other end
         // never sees the channel close and a quit that joins it hangs. A fresh
-        // pair takes their place so a later `start()` has somewhere to send.
+        // set takes their place so a later `start()` has somewhere to send.
         self.sounding = {
             let (tx, rx) = mpsc::channel();
             (tx, Some(rx))
@@ -175,6 +210,18 @@ impl SoundingSetSource for MidiSource {
             let (tx, rx) = mpsc::channel();
             (tx, Some(rx))
         };
+        self.controls = {
+            let (tx, rx) = mpsc::channel();
+            (tx, Some(rx))
+        };
+    }
+
+    fn set_settle(&mut self, settle: Duration) {
+        *lock(&self.settle) = settle;
+    }
+
+    fn select_input(&mut self, name: Option<String>) {
+        *lock(&self.live_filter) = name;
     }
 }
 
@@ -184,17 +231,34 @@ impl Drop for MidiSource {
     }
 }
 
-/// Drains event batches into the relay and emits each settled set. Ends when
-/// every sender of `events` is gone, which is when the watch thread ends.
-fn run_relay(events: Receiver<Vec<MidiEvent>>, out: Sender<SoundingSet>, settle: Duration) {
-    let mut relay = SettleRelay::new(settle);
+/// Drains event batches into the relay and emits each settled set and every
+/// pedal change. Reads `settle` on every turn so `set_settle` takes effect on
+/// the next batch, live. Ends when every sender of `events` is gone, which is
+/// when the watch thread ends.
+fn run_relay(
+    events: Receiver<Vec<MidiEvent>>,
+    out: Sender<SoundingSet>,
+    controls_out: Sender<ControlEvent>,
+    settle: Arc<Mutex<Duration>>,
+) {
+    let mut relay = SettleRelay::new(*lock(&settle));
     loop {
+        let live = *lock(&settle);
+        if live != relay.settle() {
+            relay.set_settle(live);
+        }
         let wait = relay
             .due_at()
             .map(|due| due.saturating_duration_since(Instant::now()))
             .unwrap_or(Duration::from_secs(3600));
         match events.recv_timeout(wait) {
-            Ok(batch) => relay.receive(batch, Instant::now()),
+            Ok(batch) => {
+                for control in relay.receive(batch, Instant::now()) {
+                    if controls_out.send(control).is_err() {
+                        return;
+                    }
+                }
+            }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -207,10 +271,13 @@ fn run_relay(events: Receiver<Vec<MidiEvent>>, out: Sender<SoundingSet>, settle:
 }
 
 /// Connects to the inputs, re-enumerating every `HOT_PLUG_INTERVAL` until
-/// `stop` closes. Owns every connection; they drop when it returns.
+/// `stop` closes. Owns every connection; they drop when it returns. Reads
+/// `live_filter` every pass, falling back to `filter`, so `select_input`
+/// switches the source without a restart.
 fn run_watch(
     client_name: String,
     filter: Option<String>,
+    live_filter: Arc<Mutex<Option<String>>>,
     events: Sender<Vec<MidiEvent>>,
     inputs: Sender<Vec<String>>,
     stop: Receiver<()>,
@@ -218,7 +285,8 @@ fn run_watch(
     let mut connections: BTreeMap<String, MidiInputConnection<()>> = BTreeMap::new();
     let mut published: Option<Vec<String>> = None;
     loop {
-        let present = enumerate(&client_name, filter.as_deref());
+        let effective = lock(&live_filter).clone().or_else(|| filter.clone());
+        let present = enumerate(&client_name, effective.as_deref());
 
         // Drop what vanished.
         connections.retain(|name, _| present.contains(name));

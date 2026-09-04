@@ -11,11 +11,11 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use watchord_core::{ChordKey, ChordNote, SoundingSet, SpellingOrigin};
+use watchord_core::{ChordKey, ChordNote, PedalKind, SoundingSet, SpellingOrigin};
 use watchord_model::fakes::{
     InMemoryNoteStore, ScriptedSoundingSetSource, StubAlternate, StubChordNaming,
 };
-use watchord_model::{AppModel, Screen, seconds_ago};
+use watchord_model::{AppModel, NotesSort, Screen, seconds_ago};
 
 // MARK: - Fixtures
 
@@ -411,6 +411,224 @@ mod note_tests {
         assert_eq!(f.model.notes_for_displayed_chord().len(), 1);
         let total: usize = f.model.note_groups().iter().map(|g| g.notes.len()).sum();
         assert_eq!(total, 1);
+    }
+}
+
+// MARK: - Editing an existing note
+
+mod edit_tests {
+    use super::*;
+
+    #[test]
+    fn editing_loads_the_text_and_commit_updates_rather_than_adds() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "first draft".into();
+        f.model.commit_note();
+        let id = f.model.notes_for_displayed_chord()[0].id.clone();
+
+        f.model.begin_edit(&id);
+        assert_eq!(f.model.draft_note_text, "first draft");
+        assert!(f.model.is_editing());
+
+        f.model.draft_note_text = "first draft, revised".into();
+        f.model.commit_note();
+
+        assert!(!f.model.is_editing(), "commit leaves editing");
+        assert_eq!(f.model.draft_note_text, "");
+        assert_eq!(f.store.add_call_count(), 1, "no new note was added");
+        assert_eq!(
+            note_texts(f.model.notes_for_displayed_chord()),
+            ["first draft, revised"]
+        );
+        assert_eq!(f.model.notes_for_displayed_chord()[0].id, id, "same note");
+    }
+
+    #[test]
+    fn editing_needs_no_live_chord_to_commit() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "written while sounding".into();
+        f.model.commit_note();
+        let id = f.model.notes_for_displayed_chord()[0].id.clone();
+
+        // Nothing is sounding now: an ordinary add would be refused.
+        f.model.receive(&SoundingSet::silent());
+        f.model.receive(&too_many());
+        assert!(
+            f.model.note_target_key().is_none() || f.model.notes_for_displayed_chord().is_empty()
+        );
+
+        f.model.begin_edit(&id);
+        assert!(f.model.can_commit_note());
+    }
+
+    #[test]
+    fn edit_replaces_text_and_keeps_id_created_at_and_chord_key() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "keep my identity".into();
+        f.model.commit_note();
+        let original = f.model.notes_for_displayed_chord()[0].clone();
+
+        f.model.begin_edit(&original.id);
+        f.model.draft_note_text = "identity kept, text changed".into();
+        f.model.commit_note();
+
+        let after = &f.model.notes_for_displayed_chord()[0];
+        assert_eq!(after.id, original.id);
+        assert_eq!(after.chord_key, original.chord_key);
+        assert_eq!(after.created_at, original.created_at);
+        assert_eq!(after.spelling_when_written, original.spelling_when_written);
+        assert_eq!(after.text, "identity kept, text changed");
+    }
+
+    #[test]
+    fn cancel_edit_clears_the_field_and_leaves_the_note_untouched() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "original".into();
+        f.model.commit_note();
+        let id = f.model.notes_for_displayed_chord()[0].id.clone();
+
+        f.model.begin_edit(&id);
+        f.model.draft_note_text = "changed my mind".into();
+        f.model.cancel_edit();
+
+        assert!(!f.model.is_editing());
+        assert_eq!(f.model.draft_note_text, "");
+        assert_eq!(
+            note_texts(f.model.notes_for_displayed_chord()),
+            ["original"]
+        );
+    }
+
+    #[test]
+    fn a_blank_edit_is_refused_like_a_blank_add() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "has text".into();
+        f.model.commit_note();
+        let id = f.model.notes_for_displayed_chord()[0].id.clone();
+
+        f.model.begin_edit(&id);
+        f.model.draft_note_text = "   ".into();
+        assert!(!f.model.can_commit_note());
+        f.model.commit_note();
+
+        assert!(f.model.is_editing(), "the blank commit did not go through");
+        assert_eq!(
+            note_texts(f.model.notes_for_displayed_chord()),
+            ["has text"]
+        );
+    }
+}
+
+// MARK: - Search, tags, and sort
+
+mod search_and_sort_tests {
+    use super::*;
+
+    fn seeded_two_chords() -> Fixture {
+        Fixture::seeded(vec![
+            note("sounds like the Rhodes #electric", &c6(), "C6", 100),
+            note("try the 9 on top #electric #voicing", &c6(), "Am7", 90),
+            note("plain and useful", &f_major(), "F", 5),
+        ])
+    }
+
+    #[test]
+    fn search_filters_groups_by_note_text_live_as_typed() {
+        let mut f = seeded_two_chords();
+        f.model.screen = Screen::AllNotes;
+
+        f.model.search_text = "rhodes".into();
+        let headings: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(headings, ["C6"]);
+
+        f.model.search_text.clear();
+        assert_eq!(
+            f.model.frame().groups.len(),
+            2,
+            "an empty query keeps everything"
+        );
+    }
+
+    #[test]
+    fn search_filters_by_tag() {
+        let mut f = seeded_two_chords();
+        f.model.search_text = "#voicing".into();
+        assert_eq!(f.model.frame().groups.len(), 1);
+        assert_eq!(f.model.frame().groups[0].heading, "C6");
+    }
+
+    #[test]
+    fn search_filters_by_chord_name() {
+        let mut f = seeded_two_chords();
+        f.model.search_text = "F".into();
+        let headings: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(headings, ["F"]);
+    }
+
+    #[test]
+    fn each_sort_order_holds_on_a_seeded_set() {
+        let mut f = seeded_two_chords();
+        assert_eq!(f.model.notes_sort, NotesSort::Recent);
+        let recent: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(recent, ["F", "C6"], "F's note is newest");
+
+        f.model.cycle_notes_sort();
+        assert_eq!(f.model.notes_sort, NotesSort::Chord);
+        let by_chord: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(by_chord, ["C6", "F"], "alphabetical");
+
+        f.model.cycle_notes_sort();
+        assert_eq!(f.model.notes_sort, NotesSort::Count);
+        let by_count: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(by_count, ["C6", "F"], "two notes beats one");
+
+        f.model.cycle_notes_sort();
+        assert_eq!(f.model.notes_sort, NotesSort::Recent, "cycles back");
+    }
+
+    #[test]
+    fn the_frame_carries_the_live_search_text_and_sort_choice() {
+        let mut f = seeded_two_chords();
+        f.model.search_text = "rhodes".into();
+        f.model.cycle_notes_sort();
+        let frame = f.model.frame();
+        assert_eq!(frame.search, "rhodes");
+        assert_eq!(frame.notes_sort, NotesSort::Chord);
     }
 }
 
@@ -999,5 +1217,205 @@ mod history_tests {
         let frame = model.frame();
         let names: Vec<&str> = frame.history.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, ["C6", "F"], "oldest first, newest last");
+    }
+}
+
+// MARK: - Pedals, settle, the input picker, and arpeggio (ticket 13)
+
+mod pedal_tests {
+    use super::*;
+
+    #[test]
+    fn each_pedal_plate_follows_its_own_control_event() {
+        let mut f = Fixture::new();
+        f.model.start();
+        assert!(!f.model.is_sustain_down());
+        assert!(!f.model.is_sostenuto_down());
+        assert!(!f.model.is_soft_down());
+
+        f.source.pedal(PedalKind::Sustain, true);
+        pump(&mut f.model, |m| m.is_sustain_down());
+        f.source.pedal(PedalKind::Soft, true);
+        pump(&mut f.model, |m| m.is_soft_down());
+
+        assert!(f.model.is_sustain_down());
+        assert!(f.model.is_soft_down());
+        // The control: a plate this test never touched stays down.
+        assert!(!f.model.is_sostenuto_down());
+
+        f.source.pedal(PedalKind::Sustain, false);
+        pump(&mut f.model, |m| !m.is_sustain_down());
+        assert!(
+            f.model.is_soft_down(),
+            "lifting sustain must not touch soft"
+        );
+        f.model.stop();
+    }
+}
+
+mod settle_tests {
+    use super::*;
+
+    #[test]
+    fn settle_moves_in_10ms_steps_and_clamps_at_10_and_500() {
+        let mut f = Fixture::new();
+        assert_eq!(
+            f.model.settle_ms(),
+            60,
+            "tuning::SETTLE_INTERVAL's own value"
+        );
+
+        f.model.decrease_settle();
+        assert_eq!(f.model.settle_ms(), 50);
+        f.model.increase_settle();
+        f.model.increase_settle();
+        assert_eq!(f.model.settle_ms(), 70);
+
+        for _ in 0..20 {
+            f.model.decrease_settle();
+        }
+        assert_eq!(f.model.settle_ms(), 10, "clamped at the floor");
+        f.model.decrease_settle();
+        assert_eq!(f.model.settle_ms(), 10, "one more step still clamps");
+
+        for _ in 0..60 {
+            f.model.increase_settle();
+        }
+        assert_eq!(f.model.settle_ms(), 500, "clamped at the ceiling");
+        f.model.increase_settle();
+        assert_eq!(f.model.settle_ms(), 500, "one more step still clamps");
+
+        // The control: the source actually heard the calls, not just the
+        // model's own field.
+        let calls = f.source.settle_calls();
+        assert!(!calls.is_empty());
+        assert_eq!(*calls.last().unwrap(), Duration::from_millis(500));
+    }
+}
+
+mod input_picker_tests {
+    use super::*;
+
+    #[test]
+    fn choosing_an_input_switches_the_source() {
+        let mut f = Fixture::new();
+        assert_eq!(f.source.last_selected_input(), None, "never called yet");
+
+        f.model.select_input(Some("Nord Stage 3".to_string()));
+        assert_eq!(
+            f.source.last_selected_input(),
+            Some(Some("Nord Stage 3".to_string()))
+        );
+
+        f.model.select_input(None);
+        assert_eq!(
+            f.source.last_selected_input(),
+            Some(None),
+            "clearing the restriction is a real call, not a no-op"
+        );
+    }
+}
+
+mod arpeggio_tests {
+    use super::*;
+
+    #[test]
+    fn sostenuto_toggles_arpeggio_on_its_down_edge_only() {
+        let mut f = Fixture::new();
+        f.model.start();
+        assert!(!f.model.is_arpeggio());
+
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| m.is_arpeggio());
+
+        f.source.pedal(PedalKind::Sostenuto, false);
+        pump(&mut f.model, |m| !m.is_sostenuto_down());
+        assert!(
+            f.model.is_arpeggio(),
+            "the release edge must not toggle again"
+        );
+
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| !m.is_arpeggio());
+        f.model.stop();
+    }
+
+    /// A roll with overlap — 60 stays down while 64 joins, then 60 lifts while
+    /// 67 joins — is how "one at a time" is actually played. Without arpeggio
+    /// mode the third snapshot alone would show only 64 and 67.
+    #[test]
+    fn arpeggio_keeps_a_note_the_source_has_already_dropped() {
+        let mut f = Fixture::new();
+        f.model.start();
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| m.is_arpeggio());
+
+        f.model.receive(&SoundingSet::new([60]));
+        f.model.receive(&SoundingSet::new([60, 64]));
+        f.model.receive(&SoundingSet::new([64, 67])); // 60 released by the source
+        assert_eq!(
+            f.model.keys_row(),
+            "C3  E3  G3",
+            "60 must still show — a note-off does not remove it"
+        );
+        f.model.stop();
+    }
+
+    #[test]
+    fn the_accumulator_settles_on_a_full_release_and_the_next_note_starts_fresh() {
+        let mut f = Fixture::new();
+        f.model.start();
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| m.is_arpeggio());
+
+        f.model.receive(&SoundingSet::new([60]));
+        f.model.receive(&SoundingSet::new([60, 64]));
+        f.model.receive(&SoundingSet::silent()); // every key up: "a key clears it"
+        f.model.receive(&SoundingSet::new([72]));
+
+        assert_eq!(
+            f.model.keys_row(),
+            "C4",
+            "the full release cleared the accumulator"
+        );
+        f.model.stop();
+    }
+
+    #[test]
+    fn lifting_sustain_also_settles_the_accumulator() {
+        let mut f = Fixture::new();
+        f.model.start();
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| m.is_arpeggio());
+
+        f.model.receive(&SoundingSet::new([60]));
+        f.model.receive(&SoundingSet::new([60, 64]));
+
+        f.source.pedal(PedalKind::Sustain, true);
+        pump(&mut f.model, |m| m.is_sustain_down());
+        f.source.pedal(PedalKind::Sustain, false);
+        pump(&mut f.model, |m| !m.is_sustain_down());
+
+        f.model.receive(&SoundingSet::new([72]));
+        assert_eq!(
+            f.model.keys_row(),
+            "C4",
+            "sustain lifting cleared the accumulator"
+        );
+        f.model.stop();
+    }
+
+    /// The control: without arpeggio mode, a note the source has dropped stays
+    /// dropped, exactly as ticket 08's release tests already prove for the
+    /// ordinary path — this just confirms arpeggio is what changes it.
+    #[test]
+    fn without_arpeggio_mode_a_dropped_note_stays_dropped() {
+        let mut f = Fixture::new();
+        assert!(!f.model.is_arpeggio());
+
+        f.model.receive(&SoundingSet::new([60]));
+        f.model.receive(&SoundingSet::new([60, 64]));
+        f.model.receive(&SoundingSet::new([64, 67]));
+        assert_eq!(f.model.keys_row(), "E3  G3");
     }
 }
