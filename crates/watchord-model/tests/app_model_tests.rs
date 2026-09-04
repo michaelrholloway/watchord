@@ -11,7 +11,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use watchord_core::{ChordKey, ChordNote, SoundingSet, SpellingOrigin};
+use watchord_core::{ChordKey, ChordNote, PedalKind, SoundingSet, SpellingOrigin};
 use watchord_model::fakes::{
     InMemoryNoteStore, ScriptedSoundingSetSource, StubAlternate, StubChordNaming,
 };
@@ -808,4 +808,194 @@ fn group_ties_between_groups_break_on_the_key_text() {
     let groups = AppModel::group(notes, &StubChordNaming::new());
     let keys: Vec<&str> = groups.iter().map(|g| g.key.raw()).collect();
     assert_eq!(keys, ["0.4.7", "0.4.7.9"]);
+}
+
+// MARK: - Pedals, settle, the input picker, and arpeggio (ticket 13)
+
+mod pedal_tests {
+    use super::*;
+
+    #[test]
+    fn each_pedal_plate_follows_its_own_control_event() {
+        let mut f = Fixture::new();
+        f.model.start();
+        assert!(!f.model.is_sustain_down());
+        assert!(!f.model.is_sostenuto_down());
+        assert!(!f.model.is_soft_down());
+
+        f.source.pedal(PedalKind::Sustain, true);
+        pump(&mut f.model, |m| m.is_sustain_down());
+        f.source.pedal(PedalKind::Soft, true);
+        pump(&mut f.model, |m| m.is_soft_down());
+
+        assert!(f.model.is_sustain_down());
+        assert!(f.model.is_soft_down());
+        // The control: a plate this test never touched stays down.
+        assert!(!f.model.is_sostenuto_down());
+
+        f.source.pedal(PedalKind::Sustain, false);
+        pump(&mut f.model, |m| !m.is_sustain_down());
+        assert!(f.model.is_soft_down(), "lifting sustain must not touch soft");
+        f.model.stop();
+    }
+}
+
+mod settle_tests {
+    use super::*;
+
+    #[test]
+    fn settle_moves_in_10ms_steps_and_clamps_at_10_and_500() {
+        let mut f = Fixture::new();
+        assert_eq!(f.model.settle_ms(), 60, "tuning::SETTLE_INTERVAL's own value");
+
+        f.model.decrease_settle();
+        assert_eq!(f.model.settle_ms(), 50);
+        f.model.increase_settle();
+        f.model.increase_settle();
+        assert_eq!(f.model.settle_ms(), 70);
+
+        for _ in 0..20 {
+            f.model.decrease_settle();
+        }
+        assert_eq!(f.model.settle_ms(), 10, "clamped at the floor");
+        f.model.decrease_settle();
+        assert_eq!(f.model.settle_ms(), 10, "one more step still clamps");
+
+        for _ in 0..60 {
+            f.model.increase_settle();
+        }
+        assert_eq!(f.model.settle_ms(), 500, "clamped at the ceiling");
+        f.model.increase_settle();
+        assert_eq!(f.model.settle_ms(), 500, "one more step still clamps");
+
+        // The control: the source actually heard the calls, not just the
+        // model's own field.
+        let calls = f.source.settle_calls();
+        assert!(!calls.is_empty());
+        assert_eq!(*calls.last().unwrap(), Duration::from_millis(500));
+    }
+}
+
+mod input_picker_tests {
+    use super::*;
+
+    #[test]
+    fn choosing_an_input_switches_the_source() {
+        let mut f = Fixture::new();
+        assert_eq!(f.source.last_selected_input(), None, "never called yet");
+
+        f.model.select_input(Some("Nord Stage 3".to_string()));
+        assert_eq!(
+            f.source.last_selected_input(),
+            Some(Some("Nord Stage 3".to_string()))
+        );
+
+        f.model.select_input(None);
+        assert_eq!(
+            f.source.last_selected_input(),
+            Some(None),
+            "clearing the restriction is a real call, not a no-op"
+        );
+    }
+}
+
+mod arpeggio_tests {
+    use super::*;
+
+    #[test]
+    fn sostenuto_toggles_arpeggio_on_its_down_edge_only() {
+        let mut f = Fixture::new();
+        f.model.start();
+        assert!(!f.model.is_arpeggio());
+
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| m.is_arpeggio());
+
+        f.source.pedal(PedalKind::Sostenuto, false);
+        pump(&mut f.model, |m| !m.is_sostenuto_down());
+        assert!(f.model.is_arpeggio(), "the release edge must not toggle again");
+
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| !m.is_arpeggio());
+        f.model.stop();
+    }
+
+    /// A roll with overlap — 60 stays down while 64 joins, then 60 lifts while
+    /// 67 joins — is how "one at a time" is actually played. Without arpeggio
+    /// mode the third snapshot alone would show only 64 and 67.
+    #[test]
+    fn arpeggio_keeps_a_note_the_source_has_already_dropped() {
+        let mut f = Fixture::new();
+        f.model.start();
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| m.is_arpeggio());
+
+        f.model.receive(&SoundingSet::new([60]));
+        f.model.receive(&SoundingSet::new([60, 64]));
+        f.model.receive(&SoundingSet::new([64, 67])); // 60 released by the source
+        assert_eq!(
+            f.model.keys_row(),
+            "C3  E3  G3",
+            "60 must still show — a note-off does not remove it"
+        );
+        f.model.stop();
+    }
+
+    #[test]
+    fn the_accumulator_settles_on_a_full_release_and_the_next_note_starts_fresh() {
+        let mut f = Fixture::new();
+        f.model.start();
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| m.is_arpeggio());
+
+        f.model.receive(&SoundingSet::new([60]));
+        f.model.receive(&SoundingSet::new([60, 64]));
+        f.model.receive(&SoundingSet::silent()); // every key up: "a key clears it"
+        f.model.receive(&SoundingSet::new([72]));
+
+        assert_eq!(
+            f.model.keys_row(),
+            "C4",
+            "the full release cleared the accumulator"
+        );
+        f.model.stop();
+    }
+
+    #[test]
+    fn lifting_sustain_also_settles_the_accumulator() {
+        let mut f = Fixture::new();
+        f.model.start();
+        f.source.pedal(PedalKind::Sostenuto, true);
+        pump(&mut f.model, |m| m.is_arpeggio());
+
+        f.model.receive(&SoundingSet::new([60]));
+        f.model.receive(&SoundingSet::new([60, 64]));
+
+        f.source.pedal(PedalKind::Sustain, true);
+        pump(&mut f.model, |m| m.is_sustain_down());
+        f.source.pedal(PedalKind::Sustain, false);
+        pump(&mut f.model, |m| !m.is_sustain_down());
+
+        f.model.receive(&SoundingSet::new([72]));
+        assert_eq!(
+            f.model.keys_row(),
+            "C4",
+            "sustain lifting cleared the accumulator"
+        );
+        f.model.stop();
+    }
+
+    /// The control: without arpeggio mode, a note the source has dropped stays
+    /// dropped, exactly as ticket 08's release tests already prove for the
+    /// ordinary path — this just confirms arpeggio is what changes it.
+    #[test]
+    fn without_arpeggio_mode_a_dropped_note_stays_dropped() {
+        let mut f = Fixture::new();
+        assert!(!f.model.is_arpeggio());
+
+        f.model.receive(&SoundingSet::new([60]));
+        f.model.receive(&SoundingSet::new([60, 64]));
+        f.model.receive(&SoundingSet::new([64, 67]));
+        assert_eq!(f.model.keys_row(), "E3  G3");
+    }
 }

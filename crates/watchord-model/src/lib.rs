@@ -22,9 +22,10 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use watchord_core::tuning;
 use watchord_core::{
-    ChordAnalysis, ChordKey, ChordNaming, ChordNote, DeclineReason, NoteName, NoteStoring,
-    ReadingDisplay, SoundingSet, SoundingSetSource,
+    ChordAnalysis, ChordKey, ChordNaming, ChordNote, ControlEvent, DeclineReason, NoteName,
+    NoteStoring, PedalKind, ReadingDisplay, SoundingSet, SoundingSetSource,
 };
 
 /// Which screen is showing.
@@ -87,6 +88,8 @@ pub enum ModelEvent {
     Sounding(SoundingSet),
     /// The whole current set of attached input names.
     Inputs(Vec<String>),
+    /// A pedal moved up or down.
+    Control(ControlEvent),
 }
 
 /// The two forwarding threads and the channel they feed, alive between
@@ -98,6 +101,13 @@ struct Listening {
 
 /// The maximum width of the input plate's copy of a device name.
 pub const INPUT_LABEL_LIMIT: usize = 28;
+
+/// The settle window's floor, in milliseconds.
+pub const SETTLE_MIN_MS: u64 = tuning::SETTLE_MIN_MS;
+/// The settle window's ceiling, in milliseconds.
+pub const SETTLE_MAX_MS: u64 = tuning::SETTLE_MAX_MS;
+/// The settle window's step, in milliseconds.
+pub const SETTLE_STEP_MS: u64 = tuning::SETTLE_STEP_MS;
 
 /// Everything on screen.
 pub struct AppModel {
@@ -138,6 +148,21 @@ pub struct AppModel {
     /// is plugged in — a normal state the screen has to be able to say.
     connected_inputs: Vec<String>,
 
+    /// The sustain pedal, as the source last reported it.
+    sustain: bool,
+    /// The sostenuto pedal, as the source last reported it.
+    sostenuto: bool,
+    /// The soft pedal, as the source last reported it.
+    soft: bool,
+    /// The settle window, adjusted live by two keys.
+    settle: Duration,
+    /// True while arpeggio mode is on.
+    arpeggio: bool,
+    /// The notes accumulated so far this arpeggio, while `arpeggio` is on.
+    /// Empty otherwise. A key going fully up, or the sustain pedal lifting,
+    /// clears it — the next note-on starts a fresh chord.
+    arpeggio_notes: SoundingSet,
+
     naming: Arc<dyn ChordNaming>,
     source: Box<dyn SoundingSetSource>,
     store: Arc<dyn NoteStoring>,
@@ -162,6 +187,12 @@ impl AppModel {
             status_message: None,
             banner: None,
             connected_inputs: Vec::new(),
+            sustain: false,
+            sostenuto: false,
+            soft: false,
+            settle: tuning::SETTLE_INTERVAL,
+            arpeggio: false,
+            arpeggio_notes: SoundingSet::silent(),
             naming,
             source,
             store,
@@ -189,14 +220,17 @@ impl AppModel {
         let (tx, events) = mpsc::channel();
         let sounding = self.source.sounding_sets();
         let inputs = self.source.connected_inputs();
-        // Two forwarding threads, one per stream. Separate because the two are
+        let controls = self.source.controls();
+        // Three forwarding threads, one per stream. Separate because they are
         // genuinely independent: a keyboard can appear and disappear without a
-        // note being played, and a note can arrive from a source that was
-        // already connected at launch. Each thread ends when its sender side is
-        // dropped, which `stop()` on every source does.
+        // note being played, a pedal can move with no note sounding, and a
+        // note can arrive from a source that was already connected at launch.
+        // Each thread ends when its sender side is dropped, which `stop()` on
+        // every source does.
         let threads = vec![
             forward(sounding, tx.clone(), ModelEvent::Sounding),
-            forward(inputs, tx, ModelEvent::Inputs),
+            forward(inputs, tx.clone(), ModelEvent::Inputs),
+            forward(controls, tx, ModelEvent::Control),
         ];
         self.listening = Some(Listening { events, threads });
     }
@@ -263,6 +297,32 @@ impl AppModel {
         match event {
             ModelEvent::Sounding(sounding) => self.receive(&sounding),
             ModelEvent::Inputs(names) => self.connected_inputs = names,
+            ModelEvent::Control(control) => self.apply_control(control),
+        }
+    }
+
+    /// Applies one pedal moving up or down. Sostenuto toggles arpeggio mode on
+    /// its down edge only, so a press-and-release toggles once, not twice.
+    /// Sustain lifting while arpeggio is on settles the accumulated set — the
+    /// next note-on starts a fresh chord.
+    fn apply_control(&mut self, control: ControlEvent) {
+        match control.pedal {
+            PedalKind::Sustain => {
+                self.sustain = control.down;
+                if !control.down && self.arpeggio {
+                    self.arpeggio_notes = SoundingSet::silent();
+                }
+            }
+            PedalKind::Sostenuto => {
+                self.sostenuto = control.down;
+                if control.down {
+                    self.arpeggio = !self.arpeggio;
+                    if !self.arpeggio {
+                        self.arpeggio_notes = SoundingSet::silent();
+                    }
+                }
+            }
+            PedalKind::Soft => self.soft = control.down,
         }
     }
 
@@ -277,14 +337,36 @@ impl AppModel {
     /// about it with his hands off the keys. Every non-empty set replaces the
     /// display, including one the engine declines to name: a decline is a normal
     /// answer and gets shown, in words.
+    ///
+    /// While arpeggio mode is on, `sounding` is unioned onto the notes already
+    /// accumulated this arpeggio rather than replacing the display outright —
+    /// that is the whole of "a note-on adds and a note-off does not remove
+    /// it," since a key coming up would otherwise shrink what the source
+    /// reports. A key clearing (every key up) empties the accumulator here,
+    /// via the early return below, so the next note-on starts fresh.
     pub fn receive(&mut self, sounding: &SoundingSet) {
         if sounding.is_empty() {
             // Nothing has been played yet: there is no chord to hold, so leave
             // `is_released` false and let the skin show its waiting line.
             self.is_released = self.displayed.is_some();
+            if self.arpeggio {
+                self.arpeggio_notes = SoundingSet::silent();
+            }
             return;
         }
-        let analysis = self.naming.analyze(sounding);
+        let effective = if self.arpeggio {
+            self.arpeggio_notes = SoundingSet::new(
+                self.arpeggio_notes
+                    .midi_notes()
+                    .iter()
+                    .chain(sounding.midi_notes())
+                    .copied(),
+            );
+            self.arpeggio_notes.clone()
+        } else {
+            sounding.clone()
+        };
+        let analysis = self.naming.analyze(&effective);
         let key_changed = self
             .displayed
             .as_ref()
@@ -371,6 +453,59 @@ impl AppModel {
     /// failure — nothing plugged in is an ordinary way to open this app.
     pub fn has_no_input(&self) -> bool {
         self.banner.is_none() && self.connected_inputs.is_empty()
+    }
+
+    /// Restricts the source to one named input, or clears the restriction to
+    /// listen to everything. Live — no restart. The picker calls this with a
+    /// name off `connected_inputs`.
+    pub fn select_input(&mut self, name: Option<String>) {
+        self.source.select_input(name);
+    }
+
+    // MARK: - Pedals, settle, arpeggio
+
+    /// The sustain pedal, as the source last reported it.
+    pub fn is_sustain_down(&self) -> bool {
+        self.sustain
+    }
+
+    /// The sostenuto pedal, as the source last reported it.
+    pub fn is_sostenuto_down(&self) -> bool {
+        self.sostenuto
+    }
+
+    /// The soft pedal, as the source last reported it.
+    pub fn is_soft_down(&self) -> bool {
+        self.soft
+    }
+
+    /// True while arpeggio mode is on.
+    pub fn is_arpeggio(&self) -> bool {
+        self.arpeggio
+    }
+
+    /// The settle window, in milliseconds — what the SETTLE plate reads.
+    pub fn settle_ms(&self) -> u64 {
+        self.settle.as_millis() as u64
+    }
+
+    /// Widens the settle window by one step, clamped at `SETTLE_MAX_MS`.
+    pub fn increase_settle(&mut self) {
+        self.set_settle_ms((self.settle_ms() + SETTLE_STEP_MS).min(SETTLE_MAX_MS));
+    }
+
+    /// Narrows the settle window by one step, clamped at `SETTLE_MIN_MS`.
+    pub fn decrease_settle(&mut self) {
+        self.set_settle_ms(
+            self.settle_ms()
+                .saturating_sub(SETTLE_STEP_MS)
+                .max(SETTLE_MIN_MS),
+        );
+    }
+
+    fn set_settle_ms(&mut self, ms: u64) {
+        self.settle = Duration::from_millis(ms);
+        self.source.set_settle(self.settle);
     }
 
     /// The headline as the screen writes it — the name in slash form, the `≈`
@@ -546,6 +681,11 @@ impl AppModel {
             groups: self.note_groups.clone(),
             notes_total: self.total_note_count(),
             draft: self.draft_note_text.clone(),
+            sustain: self.sustain,
+            sostenuto: self.sostenuto,
+            soft: self.soft,
+            settle_ms: self.settle_ms(),
+            arpeggio: self.arpeggio,
         }
     }
 

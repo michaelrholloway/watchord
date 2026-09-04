@@ -158,13 +158,27 @@ pub struct Frame {
     pub notes_total: usize,
     /// The text in the note field.
     pub draft: String,
+    /// The sustain pedal (CC64), as the source last reported it.
+    pub sustain: bool,
+    /// The sostenuto pedal (CC66), as the source last reported it. Toggles
+    /// `arpeggio` on its down edge.
+    pub sostenuto: bool,
+    /// The soft pedal (CC67), as the source last reported it.
+    pub soft: bool,
+    /// The settle window, in milliseconds. Two keys adjust it, 10 ms at a
+    /// time, from 10 to 500.
+    pub settle_ms: u64,
+    /// True while arpeggio mode is on: a note-on adds to the sounding set and
+    /// a note-off does not remove it, until the sustain pedal lifts or the
+    /// keys go fully up.
+    pub arpeggio: bool,
 }
 
 impl Frame {
     /// Every label a renderer must emit, lowercase. A skin writes them in
     /// UPPERCASE, `--print` writes them as they are. A test greps each plain
     /// snapshot and the print output for each one.
-    pub const LABELS: [&'static str; 26] = [
+    pub const LABELS: [&'static str; 31] = [
         "screen",
         "banner",
         "status",
@@ -191,10 +205,15 @@ impl Frame {
         "draft",
         "group",
         "written as",
+        "sustain",
+        "sostenuto",
+        "soft",
+        "settle",
+        "arpeggio",
     ];
 
     /// The labels the Now Playing screen carries: everything but the groups.
-    pub const NOW_PLAYING_LABELS: [&'static str; 24] = [
+    pub const NOW_PLAYING_LABELS: [&'static str; 29] = [
         "screen",
         "banner",
         "status",
@@ -219,10 +238,15 @@ impl Frame {
         "note",
         "notes total",
         "draft",
+        "sustain",
+        "sostenuto",
+        "soft",
+        "settle",
+        "arpeggio",
     ];
 
     /// The labels the All Notes screen carries: the head block and the groups.
-    pub const ALL_NOTES_LABELS: [&'static str; 18] = [
+    pub const ALL_NOTES_LABELS: [&'static str; 23] = [
         "screen",
         "banner",
         "status",
@@ -241,6 +265,11 @@ impl Frame {
         "note",
         "written as",
         "notes total",
+        "sustain",
+        "sostenuto",
+        "soft",
+        "settle",
+        "arpeggio",
     ];
 
     /// True when the keys are up and the display is holding the last chord.
