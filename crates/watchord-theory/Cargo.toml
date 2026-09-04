@@ -1,0 +1,15 @@
+[package]
+name = "watchord-theory"
+description = "watchord-theory: every annotation as a pure function on the analysis, the sounding set, an optional key context, and an optional previous sounding set"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+watchord-core = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -6,6 +6,7 @@ members = [
     "crates/watchord-store",
     "crates/watchord-midi",
     "crates/watchord-model",
+    "crates/watchord-theory",
     "crates/watchord-tui",
     "crates/watchord",
 ]
@@ -27,6 +28,7 @@ watchord-engine = { path = "crates/watchord-engine", version = "0.1.0" }
 watchord-store = { path = "crates/watchord-store", version = "0.1.0" }
 watchord-midi = { path = "crates/watchord-midi", version = "0.1.0" }
 watchord-model = { path = "crates/watchord-model", version = "0.1.0" }
+watchord-theory = { path = "crates/watchord-theory", version = "0.1.0" }
 watchord-tui = { path = "crates/watchord-tui", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
