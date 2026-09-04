@@ -128,6 +128,10 @@ pub trait NoteStoring: Send + Sync {
     fn all_notes(&self) -> Result<Vec<ChordNote>, StoreError>;
     /// Attach `text` to `key`, recording `spelling` as the headline on screen.
     fn add(&self, text: &str, key: &ChordKey, spelling: &str) -> Result<ChordNote, StoreError>;
+    /// Replace an existing note's text by id, keeping its key, spelling, and
+    /// creation time. The file schema does not change (spec #9). `NoSuchNote`
+    /// when `id` is not there.
+    fn update(&self, id: &str, text: &str) -> Result<ChordNote, StoreError>;
     /// Remove one note by id.
     fn delete(&self, id: &str) -> Result<(), StoreError>;
 }

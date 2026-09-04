@@ -1,4 +1,4 @@
- WATCHORD   NOTES TOTAL 3
+ WATCHORD   NOTES TOTAL 3   NOTES 2
  INPUT fake   STATE released   INPUTS —
  BANNER         fake input — no MIDI hardware is being read
  STATUS         —
@@ -23,6 +23,7 @@
 
  ANNOTATIONS    none yet
 
+ EDITING        —
  NOTES 2
    try it with the 9 on top                                                                                      delete
    sounds like the Rhodes on Voodoo                                                                              delete
@@ -39,6 +40,5 @@
 
 
 
-
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT

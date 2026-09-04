@@ -16,7 +16,7 @@ use watchord_core::{
     SpellingOrigin,
 };
 
-use crate::{NoteGroup, Screen};
+use crate::{NoteGroup, NotesSort, Screen};
 
 /// What the STATE plate reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -158,6 +158,14 @@ pub struct Frame {
     pub notes_total: usize,
     /// The text in the note field.
     pub draft: String,
+    /// The search query on All Notes, applied to `groups` live as typed.
+    /// Spec #9 (ticket #15).
+    pub search: String,
+    /// Which of the three orders `groups` is sorted by.
+    pub notes_sort: NotesSort,
+    /// True when the note field is editing an existing note rather than
+    /// drafting a new one.
+    pub editing: bool,
     /// The sustain pedal (CC64), as the source last reported it.
     pub sustain: bool,
     /// The sostenuto pedal (CC66), as the source last reported it. Toggles
@@ -178,7 +186,7 @@ impl Frame {
     /// Every label a renderer must emit, lowercase. A skin writes them in
     /// UPPERCASE, `--print` writes them as they are. A test greps each plain
     /// snapshot and the print output for each one.
-    pub const LABELS: [&'static str; 31] = [
+    pub const LABELS: [&'static str; 35] = [
         "screen",
         "banner",
         "status",
@@ -205,6 +213,10 @@ impl Frame {
         "draft",
         "group",
         "written as",
+        "editing",
+        "search",
+        "sort",
+        "tags",
         "sustain",
         "sostenuto",
         "soft",
@@ -213,7 +225,7 @@ impl Frame {
     ];
 
     /// The labels the Now Playing screen carries: everything but the groups.
-    pub const NOW_PLAYING_LABELS: [&'static str; 29] = [
+    pub const NOW_PLAYING_LABELS: [&'static str; 30] = [
         "screen",
         "banner",
         "status",
@@ -238,6 +250,7 @@ impl Frame {
         "note",
         "notes total",
         "draft",
+        "editing",
         "sustain",
         "sostenuto",
         "soft",
@@ -246,7 +259,7 @@ impl Frame {
     ];
 
     /// The labels the All Notes screen carries: the head block and the groups.
-    pub const ALL_NOTES_LABELS: [&'static str; 23] = [
+    pub const ALL_NOTES_LABELS: [&'static str; 26] = [
         "screen",
         "banner",
         "status",
@@ -265,6 +278,9 @@ impl Frame {
         "note",
         "written as",
         "notes total",
+        "search",
+        "sort",
+        "tags",
         "sustain",
         "sostenuto",
         "soft",

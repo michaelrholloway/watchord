@@ -102,7 +102,7 @@ fn print_lists_every_frame_label_and_not_the_control() {
     assert!(out.contains("\nsounding: 60 64 67 69\n"), "{out}");
     assert!(out.contains("\nkey: 0.4.7.9\n"), "{out}");
     assert!(
-        out.contains("\ngroup: C6 · key 0.4.7.9 · notes 2\n"),
+        out.contains("\ngroup: C6 · key 0.4.7.9 · notes 2 · tags —\n"),
         "{out}"
     );
     // The pedal, settle, and arpeggio plates on a fake launch: nothing pressed.
@@ -111,6 +111,10 @@ fn print_lists_every_frame_label_and_not_the_control() {
     assert!(out.contains("\nsoft: up\n"), "{out}");
     assert!(out.contains("\nsettle: 60 ms\n"), "{out}");
     assert!(out.contains("\narpeggio: off\n"), "{out}");
+    // Ticket #15: search, sort, tags, and editing state carry through --print.
+    assert!(out.contains("\nsearch: —\n"), "{out}");
+    assert!(out.contains("\nsort: recent\n"), "{out}");
+    assert!(out.contains("\nediting: —\n"), "{out}");
 }
 
 #[test]

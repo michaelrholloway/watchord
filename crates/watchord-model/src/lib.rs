@@ -13,8 +13,10 @@
 
 pub mod fakes;
 pub mod frame;
+pub mod notes;
 
 pub use frame::{Annotations, Frame, FrameReading, FrameState};
+pub use notes::NotesSort;
 
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -134,6 +136,17 @@ pub struct AppModel {
     /// The text in the always-present note field.
     pub draft_note_text: String,
 
+    /// The id of the note `draft_note_text` is editing, or `None` when it is
+    /// drafting a new one. Set by [`AppModel::begin_edit`].
+    editing_note_id: Option<String>,
+
+    /// The search query on All Notes, typed live. Filters `note_groups` by
+    /// text, tag, or chord name (spec #9).
+    pub search_text: String,
+
+    /// Which of the three orders All Notes reads in.
+    pub notes_sort: NotesSort,
+
     /// A line of plain words when something outside the model's control went
     /// wrong — no MIDI available, the notes file could not be read. Never a
     /// crash, never a blank screen.
@@ -184,6 +197,9 @@ impl AppModel {
             notes_for_displayed_chord: Vec::new(),
             note_groups: Vec::new(),
             draft_note_text: String::new(),
+            editing_note_id: None,
+            search_text: String::new(),
+            notes_sort: NotesSort::default(),
             status_message: None,
             banner: None,
             connected_inputs: Vec::new(),
@@ -617,10 +633,50 @@ impl AppModel {
         }
     }
 
-    /// True when Enter would save something: a chord to attach to and a
-    /// draft that is not blank.
+    /// True when Enter would save something: a non-blank draft, and — unless
+    /// it is editing an existing note, which needs no live chord — a chord to
+    /// attach it to.
     pub fn can_commit_note(&self) -> bool {
-        self.note_target_key().is_some() && !self.draft_note_text.trim().is_empty()
+        if self.draft_note_text.trim().is_empty() {
+            return false;
+        }
+        self.editing_note_id.is_some() || self.note_target_key().is_some()
+    }
+
+    // MARK: - Editing
+
+    /// True while the field is editing an existing note rather than drafting
+    /// a new one.
+    pub fn is_editing(&self) -> bool {
+        self.editing_note_id.is_some()
+    }
+
+    /// Loads `id`'s text into the field for editing. Looks across both the
+    /// notes on the displayed chord and every group, so a note found on
+    /// either screen can be edited. A no-op when `id` is not found.
+    pub fn begin_edit(&mut self, id: &str) {
+        let found = self
+            .notes_for_displayed_chord
+            .iter()
+            .chain(self.note_groups.iter().flat_map(|g| g.notes.iter()))
+            .find(|n| n.id == id)
+            .cloned();
+        if let Some(note) = found {
+            self.draft_note_text = note.text;
+            self.editing_note_id = Some(note.id);
+        }
+    }
+
+    /// Leaves editing and clears the field. A no-op when not editing.
+    pub fn cancel_edit(&mut self) {
+        if self.editing_note_id.take().is_some() {
+            self.draft_note_text.clear();
+        }
+    }
+
+    /// Steps to the next of the three sort orders.
+    pub fn cycle_notes_sort(&mut self) {
+        self.notes_sort = self.notes_sort.next();
     }
 
     // MARK: - The frame
@@ -654,6 +710,8 @@ impl AppModel {
         } else {
             FrameState::Held
         };
+        let groups = notes::filter_groups(self.note_groups.clone(), &self.search_text);
+        let groups = notes::sort_groups(groups, self.notes_sort);
         Frame {
             screen: self.screen,
             banner: self.banner.clone(),
@@ -678,9 +736,12 @@ impl AppModel {
             alternates,
             annotations: Annotations::default(),
             notes: self.notes_for_displayed_chord.clone(),
-            groups: self.note_groups.clone(),
+            groups,
             notes_total: self.total_note_count(),
             draft: self.draft_note_text.clone(),
+            search: self.search_text.clone(),
+            notes_sort: self.notes_sort,
+            editing: self.editing_note_id.is_some(),
             sustain: self.sustain,
             sostenuto: self.sostenuto,
             soft: self.soft,
@@ -698,12 +759,27 @@ impl AppModel {
     /// later resurfaces under `Am7`.
     pub fn commit_note(&mut self) {
         let text = self.draft_note_text.trim().to_string();
-        let Some(key) = self.note_target_key() else {
-            return;
-        };
         if text.is_empty() {
             return;
         }
+        if let Some(id) = self.editing_note_id.clone() {
+            match self.store.update(&id, &text) {
+                Ok(_) => {
+                    self.draft_note_text.clear();
+                    self.editing_note_id = None;
+                    self.status_message = None;
+                    self.reload_notes_for_displayed_chord();
+                    self.reload_all_notes();
+                }
+                Err(error) => {
+                    self.status_message = Some(format!("Could not save the note — {error}"));
+                }
+            }
+            return;
+        }
+        let Some(key) = self.note_target_key() else {
+            return;
+        };
         let spelling = self.headline_text();
         match self.store.add(&text, &key, &spelling) {
             Ok(_) => {

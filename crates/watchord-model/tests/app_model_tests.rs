@@ -15,7 +15,7 @@ use watchord_core::{ChordKey, ChordNote, PedalKind, SoundingSet, SpellingOrigin}
 use watchord_model::fakes::{
     InMemoryNoteStore, ScriptedSoundingSetSource, StubAlternate, StubChordNaming,
 };
-use watchord_model::{AppModel, Screen, seconds_ago};
+use watchord_model::{AppModel, NotesSort, Screen, seconds_ago};
 
 // MARK: - Fixtures
 
@@ -411,6 +411,224 @@ mod note_tests {
         assert_eq!(f.model.notes_for_displayed_chord().len(), 1);
         let total: usize = f.model.note_groups().iter().map(|g| g.notes.len()).sum();
         assert_eq!(total, 1);
+    }
+}
+
+// MARK: - Editing an existing note
+
+mod edit_tests {
+    use super::*;
+
+    #[test]
+    fn editing_loads_the_text_and_commit_updates_rather_than_adds() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "first draft".into();
+        f.model.commit_note();
+        let id = f.model.notes_for_displayed_chord()[0].id.clone();
+
+        f.model.begin_edit(&id);
+        assert_eq!(f.model.draft_note_text, "first draft");
+        assert!(f.model.is_editing());
+
+        f.model.draft_note_text = "first draft, revised".into();
+        f.model.commit_note();
+
+        assert!(!f.model.is_editing(), "commit leaves editing");
+        assert_eq!(f.model.draft_note_text, "");
+        assert_eq!(f.store.add_call_count(), 1, "no new note was added");
+        assert_eq!(
+            note_texts(f.model.notes_for_displayed_chord()),
+            ["first draft, revised"]
+        );
+        assert_eq!(f.model.notes_for_displayed_chord()[0].id, id, "same note");
+    }
+
+    #[test]
+    fn editing_needs_no_live_chord_to_commit() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "written while sounding".into();
+        f.model.commit_note();
+        let id = f.model.notes_for_displayed_chord()[0].id.clone();
+
+        // Nothing is sounding now: an ordinary add would be refused.
+        f.model.receive(&SoundingSet::silent());
+        f.model.receive(&too_many());
+        assert!(
+            f.model.note_target_key().is_none() || f.model.notes_for_displayed_chord().is_empty()
+        );
+
+        f.model.begin_edit(&id);
+        assert!(f.model.can_commit_note());
+    }
+
+    #[test]
+    fn edit_replaces_text_and_keeps_id_created_at_and_chord_key() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "keep my identity".into();
+        f.model.commit_note();
+        let original = f.model.notes_for_displayed_chord()[0].clone();
+
+        f.model.begin_edit(&original.id);
+        f.model.draft_note_text = "identity kept, text changed".into();
+        f.model.commit_note();
+
+        let after = &f.model.notes_for_displayed_chord()[0];
+        assert_eq!(after.id, original.id);
+        assert_eq!(after.chord_key, original.chord_key);
+        assert_eq!(after.created_at, original.created_at);
+        assert_eq!(after.spelling_when_written, original.spelling_when_written);
+        assert_eq!(after.text, "identity kept, text changed");
+    }
+
+    #[test]
+    fn cancel_edit_clears_the_field_and_leaves_the_note_untouched() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "original".into();
+        f.model.commit_note();
+        let id = f.model.notes_for_displayed_chord()[0].id.clone();
+
+        f.model.begin_edit(&id);
+        f.model.draft_note_text = "changed my mind".into();
+        f.model.cancel_edit();
+
+        assert!(!f.model.is_editing());
+        assert_eq!(f.model.draft_note_text, "");
+        assert_eq!(
+            note_texts(f.model.notes_for_displayed_chord()),
+            ["original"]
+        );
+    }
+
+    #[test]
+    fn a_blank_edit_is_refused_like_a_blank_add() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        f.model.draft_note_text = "has text".into();
+        f.model.commit_note();
+        let id = f.model.notes_for_displayed_chord()[0].id.clone();
+
+        f.model.begin_edit(&id);
+        f.model.draft_note_text = "   ".into();
+        assert!(!f.model.can_commit_note());
+        f.model.commit_note();
+
+        assert!(f.model.is_editing(), "the blank commit did not go through");
+        assert_eq!(
+            note_texts(f.model.notes_for_displayed_chord()),
+            ["has text"]
+        );
+    }
+}
+
+// MARK: - Search, tags, and sort
+
+mod search_and_sort_tests {
+    use super::*;
+
+    fn seeded_two_chords() -> Fixture {
+        Fixture::seeded(vec![
+            note("sounds like the Rhodes #electric", &c6(), "C6", 100),
+            note("try the 9 on top #electric #voicing", &c6(), "Am7", 90),
+            note("plain and useful", &f_major(), "F", 5),
+        ])
+    }
+
+    #[test]
+    fn search_filters_groups_by_note_text_live_as_typed() {
+        let mut f = seeded_two_chords();
+        f.model.screen = Screen::AllNotes;
+
+        f.model.search_text = "rhodes".into();
+        let headings: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(headings, ["C6"]);
+
+        f.model.search_text.clear();
+        assert_eq!(
+            f.model.frame().groups.len(),
+            2,
+            "an empty query keeps everything"
+        );
+    }
+
+    #[test]
+    fn search_filters_by_tag() {
+        let mut f = seeded_two_chords();
+        f.model.search_text = "#voicing".into();
+        assert_eq!(f.model.frame().groups.len(), 1);
+        assert_eq!(f.model.frame().groups[0].heading, "C6");
+    }
+
+    #[test]
+    fn search_filters_by_chord_name() {
+        let mut f = seeded_two_chords();
+        f.model.search_text = "F".into();
+        let headings: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(headings, ["F"]);
+    }
+
+    #[test]
+    fn each_sort_order_holds_on_a_seeded_set() {
+        let mut f = seeded_two_chords();
+        assert_eq!(f.model.notes_sort, NotesSort::Recent);
+        let recent: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(recent, ["F", "C6"], "F's note is newest");
+
+        f.model.cycle_notes_sort();
+        assert_eq!(f.model.notes_sort, NotesSort::Chord);
+        let by_chord: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(by_chord, ["C6", "F"], "alphabetical");
+
+        f.model.cycle_notes_sort();
+        assert_eq!(f.model.notes_sort, NotesSort::Count);
+        let by_count: Vec<String> = f
+            .model
+            .frame()
+            .groups
+            .iter()
+            .map(|g| g.heading.clone())
+            .collect();
+        assert_eq!(by_count, ["C6", "F"], "two notes beats one");
+
+        f.model.cycle_notes_sort();
+        assert_eq!(f.model.notes_sort, NotesSort::Recent, "cycles back");
+    }
+
+    #[test]
+    fn the_frame_carries_the_live_search_text_and_sort_choice() {
+        let mut f = seeded_two_chords();
+        f.model.search_text = "rhodes".into();
+        f.model.cycle_notes_sort();
+        let frame = f.model.frame();
+        assert_eq!(frame.search, "rhodes");
+        assert_eq!(frame.notes_sort, NotesSort::Chord);
     }
 }
 

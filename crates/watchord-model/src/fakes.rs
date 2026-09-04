@@ -295,6 +295,18 @@ impl NoteStoring for InMemoryNoteStore {
         Ok(note)
     }
 
+    fn update(&self, id: &str, text: &str) -> Result<ChordNote, StoreError> {
+        if let Some(message) = &self.inner.failure {
+            return Err(StoreError::Io(message.clone()));
+        }
+        let mut storage = lock(&self.inner.storage);
+        let Some(existing) = storage.iter_mut().find(|n| n.id == id) else {
+            return Err(StoreError::NoSuchNote(id.to_string()));
+        };
+        existing.text = text.to_string();
+        Ok(existing.clone())
+    }
+
     fn delete(&self, id: &str) -> Result<(), StoreError> {
         if let Some(message) = &self.inner.failure {
             return Err(StoreError::Io(message.clone()));
