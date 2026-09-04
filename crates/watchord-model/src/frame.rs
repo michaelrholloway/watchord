@@ -15,6 +15,7 @@ use watchord_core::{
     ChordFit, ChordKey, ChordNote, ChordReading, NoteName, PitchClass, ReadingDisplay, SoundingSet,
     SpellingOrigin,
 };
+use watchord_theory::key_context::{Function, Key};
 
 use crate::{NoteGroup, NotesSort, Screen};
 
@@ -64,6 +65,15 @@ pub struct FrameReading {
     pub root: PitchClass,
     /// The pitch classes it claims — its whole spelling.
     pub claimed: BTreeSet<PitchClass>,
+    /// This reading's Roman numeral against `Frame::key_context`, or `None`
+    /// when no key is set (ticket #16).
+    pub numeral: Option<String>,
+    /// This reading's Nashville number against `Frame::key_context`, or
+    /// `None` when no key is set (ticket #16).
+    pub nashville: Option<String>,
+    /// This reading's role against `Frame::key_context`, or `None` when no
+    /// key is set (ticket #16).
+    pub function: Option<Function>,
 }
 
 impl FrameReading {
@@ -80,7 +90,29 @@ impl FrameReading {
             score: reading.score,
             root: reading.root,
             claimed: reading.pitch_classes.clone(),
+            numeral: None,
+            nashville: None,
+            function: None,
         }
+    }
+
+    /// Fills `numeral`, `nashville`, and `function` from `key` — a no-op
+    /// when `key` is `None`, which is how the three stay `None` before any
+    /// key context is set. Reuses `reading`'s own root, pitch classes, and
+    /// written name, so the caller passes exactly what built this row.
+    pub fn with_key_context(mut self, key: Option<Key>, reading: &ChordReading) -> Self {
+        if let Some(key) = key {
+            let annotated = watchord_theory::key_context::annotate_reading(
+                key,
+                reading.root,
+                &reading.pitch_classes,
+                &reading.display,
+            );
+            self.numeral = Some(annotated.numeral);
+            self.nashville = Some(annotated.nashville);
+            self.function = Some(annotated.function);
+        }
+        self
     }
 
     /// The root's name, with sharps: `C#`.
@@ -180,13 +212,17 @@ pub struct Frame {
     /// a note-off does not remove it, until the sustain pedal lifts or the
     /// keys go fully up.
     pub arpeggio: bool,
+    /// The tonic and mode every reading's numeral is read against — hand-set
+    /// with two keys, or from the headline while the soft pedal is held.
+    /// `None` until set. Session only; never saved (ticket #16).
+    pub key_context: Option<Key>,
 }
 
 impl Frame {
     /// Every label a renderer must emit, lowercase. A skin writes them in
     /// UPPERCASE, `--print` writes them as they are. A test greps each plain
     /// snapshot and the print output for each one.
-    pub const LABELS: [&'static str; 35] = [
+    pub const LABELS: [&'static str; 39] = [
         "screen",
         "banner",
         "status",
@@ -222,10 +258,14 @@ impl Frame {
         "soft",
         "settle",
         "arpeggio",
+        "key context",
+        "numeral",
+        "nashville",
+        "function",
     ];
 
     /// The labels the Now Playing screen carries: everything but the groups.
-    pub const NOW_PLAYING_LABELS: [&'static str; 30] = [
+    pub const NOW_PLAYING_LABELS: [&'static str; 34] = [
         "screen",
         "banner",
         "status",
@@ -256,10 +296,14 @@ impl Frame {
         "soft",
         "settle",
         "arpeggio",
+        "key context",
+        "numeral",
+        "nashville",
+        "function",
     ];
 
     /// The labels the All Notes screen carries: the head block and the groups.
-    pub const ALL_NOTES_LABELS: [&'static str; 26] = [
+    pub const ALL_NOTES_LABELS: [&'static str; 27] = [
         "screen",
         "banner",
         "status",
@@ -286,6 +330,7 @@ impl Frame {
         "soft",
         "settle",
         "arpeggio",
+        "key context",
     ];
 
     /// True when the keys are up and the display is holding the last chord.

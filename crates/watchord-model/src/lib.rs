@@ -27,8 +27,9 @@ use serde::{Deserialize, Serialize};
 use watchord_core::tuning;
 use watchord_core::{
     ChordAnalysis, ChordKey, ChordNaming, ChordNote, ControlEvent, DeclineReason, NoteName,
-    NoteStoring, PedalKind, ReadingDisplay, SoundingSet, SoundingSetSource,
+    NoteStoring, PedalKind, PitchClass, ReadingDisplay, SoundingSet, SoundingSetSource,
 };
+use watchord_theory::key_context::{self, Key, Mode};
 
 /// Which screen is showing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -176,6 +177,12 @@ pub struct AppModel {
     /// clears it — the next note-on starts a fresh chord.
     arpeggio_notes: SoundingSet,
 
+    /// The tonic and mode every reading's numeral is read against. Hand-set
+    /// with `cycle_key_tonic`/`toggle_key_mode`, or set from the headline
+    /// while the soft pedal is held (ticket #16). `None` until set; session
+    /// only — never saved.
+    key_context: Option<Key>,
+
     naming: Arc<dyn ChordNaming>,
     source: Box<dyn SoundingSetSource>,
     store: Arc<dyn NoteStoring>,
@@ -209,6 +216,7 @@ impl AppModel {
             settle: tuning::SETTLE_INTERVAL,
             arpeggio: false,
             arpeggio_notes: SoundingSet::silent(),
+            key_context: None,
             naming,
             source,
             store,
@@ -383,6 +391,18 @@ impl AppModel {
             sounding.clone()
         };
         let analysis = self.naming.analyze(&effective);
+        // Ticket #16: the soft pedal held while a chord settles sets the key
+        // context from the headline — root becomes tonic, triad quality
+        // picks the mode. A settle that declines to name anything leaves the
+        // key context exactly as it was.
+        if self.soft
+            && let Some(headline) = &analysis.headline
+        {
+            self.key_context = Some(key_context::key_from_headline(
+                headline.root,
+                &headline.pitch_classes,
+            ));
+        }
         let key_changed = self
             .displayed
             .as_ref()
@@ -522,6 +542,33 @@ impl AppModel {
     fn set_settle_ms(&mut self, ms: u64) {
         self.settle = Duration::from_millis(ms);
         self.source.set_settle(self.settle);
+    }
+
+    // MARK: - Key context (ticket #16)
+
+    /// The tonic and mode every reading's numeral is read against, or `None`
+    /// before anything sets it.
+    pub fn key_context(&self) -> Option<Key> {
+        self.key_context
+    }
+
+    /// `k`: steps the tonic up a semitone. Sets `C major` on the first press
+    /// when no key is set yet — one of the "two keys [that] set it" (spec
+    /// #9); every later press only moves the tonic.
+    pub fn cycle_key_tonic(&mut self) {
+        self.key_context = Some(match self.key_context {
+            Some(key) => key.cycle_tonic(),
+            None => Key::new(PitchClass::new(0), Mode::Major),
+        });
+    }
+
+    /// `m`: flips major/minor. Sets `C major` on the first press when no key
+    /// is set yet, the same way `cycle_key_tonic` does.
+    pub fn toggle_key_mode(&mut self) {
+        self.key_context = Some(match self.key_context {
+            Some(key) => key.toggle_mode(),
+            None => Key::new(PitchClass::new(0), Mode::Major),
+        });
     }
 
     /// The headline as the screen writes it — the name in slash form, the `≈`
@@ -692,14 +739,18 @@ impl AppModel {
             .displayed
             .as_ref()
             .and_then(|d| d.headline.as_ref())
-            .map(|reading| FrameReading::new(reading, bass));
+            .map(|reading| {
+                FrameReading::new(reading, bass).with_key_context(self.key_context, reading)
+            });
         let alternates = self
             .displayed
             .as_ref()
             .map(|d| {
                 d.alternates
                     .iter()
-                    .map(|reading| FrameReading::new(reading, bass))
+                    .map(|reading| {
+                        FrameReading::new(reading, bass).with_key_context(self.key_context, reading)
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -747,6 +798,7 @@ impl AppModel {
             soft: self.soft,
             settle_ms: self.settle_ms(),
             arpeggio: self.arpeggio,
+            key_context: self.key_context,
         }
     }
 

@@ -1227,3 +1227,119 @@ mod arpeggio_tests {
         assert_eq!(f.model.keys_row(), "E3  G3");
     }
 }
+
+// MARK: - Key context (ticket #16)
+
+mod key_context_tests {
+    use watchord_core::PitchClass;
+    use watchord_theory::key_context::{Key, Mode};
+
+    use super::*;
+
+    #[test]
+    fn two_keys_set_and_step_the_key() {
+        let mut f = Fixture::new();
+        assert_eq!(f.model.key_context(), None, "unset before anything");
+
+        f.model.cycle_key_tonic();
+        assert_eq!(
+            f.model.key_context(),
+            Some(Key::new(PitchClass::new(0), Mode::Major)),
+            "the first press of either key sets C major"
+        );
+
+        f.model.cycle_key_tonic();
+        assert_eq!(
+            f.model.key_context(),
+            Some(Key::new(PitchClass::new(1), Mode::Major)),
+            "the second press only steps the tonic"
+        );
+
+        f.model.toggle_key_mode();
+        assert_eq!(
+            f.model.key_context(),
+            Some(Key::new(PitchClass::new(1), Mode::Minor)),
+            "the mode key only flips the mode"
+        );
+    }
+
+    #[test]
+    fn the_soft_pedal_held_while_a_chord_settles_sets_the_key_from_the_headline() {
+        let mut f = Fixture::new();
+        f.model.start();
+
+        // C6 (C E G A): a major triad on C — ticket #16's own worked example.
+        f.source.pedal(PedalKind::Soft, true);
+        pump(&mut f.model, |m| m.is_soft_down());
+        f.model.receive(&c6());
+        assert_eq!(
+            f.model.key_context(),
+            Some(Key::new(PitchClass::new(0), Mode::Major)),
+            "root C, major triad quality"
+        );
+
+        // A fresh minor headline, settled with the pedal still down.
+        let a_minor = SoundingSet::new([57, 60, 64]); // A C E
+        f.naming.stub(
+            &a_minor,
+            StubChordNaming::naming(&a_minor, "Am", "A minor", vec![]),
+        );
+        f.model.receive(&a_minor);
+        assert_eq!(
+            f.model.key_context(),
+            Some(Key::new(PitchClass::new(9), Mode::Minor)),
+            "root A, minor triad quality"
+        );
+
+        // The control: with the pedal back up, a settle must not move it.
+        f.source.pedal(PedalKind::Soft, false);
+        pump(&mut f.model, |m| !m.is_soft_down());
+        f.model.receive(&c6());
+        assert_eq!(
+            f.model.key_context(),
+            Some(Key::new(PitchClass::new(9), Mode::Minor)),
+            "soft pedal up: the settle must not move the key"
+        );
+        f.model.stop();
+    }
+
+    #[test]
+    fn a_declined_settle_leaves_the_key_exactly_as_it_was() {
+        let mut f = Fixture::new();
+        f.model.start();
+        f.source.pedal(PedalKind::Soft, true);
+        pump(&mut f.model, |m| m.is_soft_down());
+        f.model.receive(&c6());
+        let before = f.model.key_context();
+        assert!(before.is_some());
+
+        // Past the naming ceiling: the engine declines, there is no headline.
+        f.model.receive(&too_many());
+        assert_eq!(
+            f.model.key_context(),
+            before,
+            "a declined settle must not clear or move the key"
+        );
+        f.model.stop();
+    }
+
+    #[test]
+    fn the_ranking_of_readings_is_identical_with_and_without_a_key() {
+        let mut f = Fixture::new();
+        f.model.receive(&c6());
+        let without_key = alternate_names(&f.model);
+
+        f.model.cycle_key_tonic(); // sets C major
+        let with_key = alternate_names(&f.model);
+        assert_eq!(
+            without_key, with_key,
+            "the alternates list, by display string, must not move"
+        );
+
+        // The control: a genuinely different chord's list compares unequal,
+        // so the equality above is not a tautology of a broken comparison.
+        f.model.receive(&f_major());
+        let different_chord = alternate_names(&f.model);
+        assert_ne!(with_key, different_chord);
+    }
+}
