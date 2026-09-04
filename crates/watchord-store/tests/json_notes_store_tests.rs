@@ -857,6 +857,97 @@ mod atomic_writes {
     }
 }
 
+// MARK: - Updating a note's text
+
+mod updating {
+    use super::*;
+
+    #[test]
+    fn update_replaces_the_text_and_persists() {
+        let dir = TempDirectory::new();
+        let store = JsonNotesStore::at(dir.notes_file());
+        let written = store.add("the Rhodes one", &c_six(), "C6").unwrap();
+
+        let updated = store.update(&written.id, "the Rhodes one, muted").unwrap();
+        assert_eq!(updated.text, "the Rhodes one, muted");
+        assert_eq!(updated.id, written.id);
+        assert_eq!(updated.chord_key, written.chord_key);
+        assert_eq!(updated.spelling_when_written, written.spelling_when_written);
+        assert_eq!(updated.created_at, written.created_at);
+
+        // A second instance, so this reads the file rather than the cache.
+        let reloaded = JsonNotesStore::at(dir.notes_file()).all_notes().unwrap();
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0].text, "the Rhodes one, muted");
+        assert_eq!(reloaded[0].id, written.id);
+    }
+
+    #[test]
+    fn updating_an_absent_id_is_an_error_and_nothing_on_disk_changes() {
+        let dir = TempDirectory::new();
+        let store = JsonNotesStore::at(dir.notes_file());
+        store.add("keep", &c_six(), "C6").unwrap();
+        let before = fs::read(dir.notes_file()).unwrap();
+
+        let result = store.update(&uuid(), "new text");
+        assert!(matches!(result, Err(StoreError::NoSuchNote(_))));
+        assert_eq!(fs::read(dir.notes_file()).unwrap(), before);
+    }
+
+    /// The byte-compatibility claim from #15: update keeps the file shape
+    /// note-view writes — same fields, same format, only the text differs.
+    /// Asserted against the real bytes, as `matches_note_views_bytes` is,
+    /// because a round trip would pass for any self-consistent format.
+    #[test]
+    fn update_keeps_the_file_byte_compatible_with_note_views_schema() {
+        let dir = TempDirectory::new();
+        let clock = TestClock::starting_at(UNIX_EPOCH + Duration::from_secs(1_770_000_000));
+        let store = JsonNotesStore::with_clock(dir.notes_file(), clock.now());
+        let note = store.add("hello", &c_six(), "CΔ6").unwrap();
+
+        store.update(&note.id, "hello, edited").unwrap();
+
+        let expected = format!(
+            "{{\n  \"notes\" : [\n    {{\n      \"chordKey\" : \"0.4.7.9\",\n      \"createdAt\" : \"2026-02-02T02:40:00Z\",\n      \"id\" : \"{}\",\n      \"spellingWhenWritten\" : \"CΔ6\",\n      \"text\" : \"hello, edited\"\n    }}\n  ],\n  \"version\" : 1\n}}",
+            note.id
+        );
+        assert_eq!(dir.raw_store_text(), expected);
+    }
+
+    /// "A note written by note-view reads back unchanged" — updating one note
+    /// must not disturb its neighbour's bytes at all.
+    #[test]
+    fn updating_one_note_leaves_a_note_written_in_the_note_view_schema_unchanged() {
+        let dir = TempDirectory::new();
+        let neighbour_id = uuid();
+        dir.write_raw_store(&format!(
+            "{{ \"version\": 1, \"notes\": [{}] }}",
+            entry(
+                &neighbour_id,
+                "0.4.7",
+                "written by note-view",
+                "C",
+                "2026-08-10T14:00:00Z"
+            ),
+        ));
+        let store = JsonNotesStore::at(dir.notes_file());
+        let mine = store.add("mine", &c_six(), "C6").unwrap();
+
+        store.update(&mine.id, "mine, edited").unwrap();
+
+        let reloaded = JsonNotesStore::at(dir.notes_file()).all_notes().unwrap();
+        let neighbour = reloaded
+            .iter()
+            .find(|n| n.id == neighbour_id)
+            .expect("the neighbour is still there");
+        assert_eq!(neighbour.text, "written by note-view");
+        assert_eq!(neighbour.chord_key, c_major());
+        assert_eq!(neighbour.spelling_when_written, "C");
+        let mine = reloaded.iter().find(|n| n.id == mine.id).expect("mine");
+        assert_eq!(mine.text, "mine, edited");
+    }
+}
+
 // MARK: - Refusing to write what cannot be read back
 
 mod refusing_unreadable_writes {
