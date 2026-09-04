@@ -15,7 +15,10 @@
 //!   including a file that parses cleanly while some of its *entries* do not.
 //! - A key that cannot round-trip is refused at `add` rather than written.
 
+pub mod drill_store;
 pub mod iso8601;
+
+pub use drill_store::{DRILL_FILE_NAME, JsonDrillStore};
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, ErrorKind, Write};

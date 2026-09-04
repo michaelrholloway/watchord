@@ -23,6 +23,7 @@
 
  ANNOTATIONS    none yet
  HISTORY 1  C13/E   VOICE LEADING —
+ DRILL          off   TARGET —   NEXT TARGET —   GRADE —   DRILL STATS 0
  EDITING        —
  NOTES 0
    none yet
@@ -39,6 +40,5 @@
 
 
 
-
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DEL · E EDIT · S SORT · X EXPORT · ^X JSON · SHIFT+ENTER NL · ENTER · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DEL · E EDIT · S SORT · P DRILL · X MD · ^X JSON · ⇧ENTER NL · ENTER · Q QUIT

@@ -102,6 +102,8 @@ enum Action {
     EditSelected,
     /// `s`: steps All Notes to its next sort order.
     CycleSort,
+    /// `p`: enters drill if it is off, leaves it if it is on.
+    ToggleDrill,
     /// `i`: opens or closes the input picker (ticket 13).
     ToggleInputPicker,
     /// The picker is open: ↑ moves the highlight up, wrapping.
@@ -164,6 +166,7 @@ fn action_for(
         KeyCode::Char('s') if active_field_is_empty && screen == Screen::AllNotes => {
             Action::CycleSort
         }
+        KeyCode::Char('p') if active_field_is_empty => Action::ToggleDrill,
         KeyCode::Char('i') if active_field_is_empty => Action::ToggleInputPicker,
         KeyCode::Char('-') if active_field_is_empty => Action::SettleDown,
         KeyCode::Char('+') if active_field_is_empty => Action::SettleUp,
@@ -280,6 +283,7 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
         Action::ExportMarkdown => run_export(model, export::write_markdown),
         Action::ExportJson => run_export(model, export::write_json_lines),
         Action::CycleSort => model.cycle_notes_sort(),
+        Action::ToggleDrill => model.toggle_drill(),
         Action::Commit => model.commit_note(),
         Action::Backspace => match screen {
             Screen::AllNotes => {

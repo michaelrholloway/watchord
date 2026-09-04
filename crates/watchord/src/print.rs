@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use watchord_model::notes::tags_of;
 use watchord_model::{AppModel, Frame};
+use watchord_tui::when;
 
 use crate::composition::GraphKinds;
 
@@ -286,8 +287,36 @@ pub fn render(frame: &Frame) -> String {
             ));
         }
     }
+    drill_lines(&frame.drill, &mut lines);
     lines.push(String::new());
     lines.join("\n")
+}
+
+/// Drill's own lines (spec #9, ticket #14). Always emitted, even when drill
+/// is off, so `--print`'s labels never depend on whether drill has been used
+/// — the same discipline every other optional field on the frame keeps.
+fn drill_lines(drill: &watchord_model::DrillFrame, lines: &mut Vec<String>) {
+    lines.push(format!(
+        "drill: {}",
+        if drill.active { "on" } else { "off" }
+    ));
+    lines.push(format!("target: {}", or_absent(drill.target.as_deref())));
+    lines.push(format!(
+        "next target: {}",
+        or_absent(drill.next_target.as_deref())
+    ));
+    lines.push(format!("grade: {}", or_absent(drill.grade_display())));
+    lines.push(format!("drill stats: {}", drill.stats.len()));
+    for row in &drill.stats {
+        let last = row
+            .last_at
+            .map(when::format)
+            .unwrap_or_else(|| ABSENT.to_string());
+        lines.push(format!(
+            "drill stat: {} · attempts {} · exact {} · last {last}",
+            row.chord, row.attempts, row.exact
+        ));
+    }
 }
 
 #[cfg(test)]
