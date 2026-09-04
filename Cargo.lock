@@ -1963,6 +1963,7 @@ dependencies = [
  "serde_json",
  "uuid",
  "watchord-core",
+ "watchord-theory",
 ]
 
 [[package]]
@@ -1978,6 +1979,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "watchord-theory"
+version = "0.1.0"
+dependencies = [
+ "watchord-core",
+]
+
+[[package]]
 name = "watchord-tui"
 version = "0.1.0"
 dependencies = [
@@ -1989,6 +1997,7 @@ dependencies = [
  "unicode-width",
  "watchord-core",
  "watchord-model",
+ "watchord-store",
 ]
 
 [[package]]

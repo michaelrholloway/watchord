@@ -1,0 +1,13 @@
+[package]
+name = "watchord-theory"
+description = "watchord theory: pure annotations derived after the engine ranks — voicing, inversion, numeral, staff, voice leading"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[dependencies]
+watchord-core = { workspace = true }
