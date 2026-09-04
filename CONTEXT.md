@@ -191,6 +191,14 @@ root. Shown beside the headline, not ranked.
 The current chord drawn as note heads on a treble and a bass staff, spelled as
 the headline spells it. Michael's word.
 
+### Voice leading
+
+Between two sounding sets, the assignment of previous notes to current notes
+with the smallest total semitone motion, found by exhaustive search. Reported
+as total semitones, common tones kept, and the largest single move. Standard
+music theory vocabulary, not coined for this app — computed for each history
+entry against the one before it.
+
 ## The notation
 
 **Ruled live by Michael, 2026-08-10.** A quality symbol always describes the

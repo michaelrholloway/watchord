@@ -1028,6 +1028,198 @@ fn group_ties_between_groups_break_on_the_key_text() {
     assert_eq!(keys, ["0.4.7", "0.4.7.9"]);
 }
 
+// MARK: - History: filling, stepping, and voice leading (ticket 12)
+
+mod history_tests {
+    use std::sync::Mutex;
+    use std::time::UNIX_EPOCH;
+
+    use watchord_model::{Clock, FrameState, HistoryStep};
+
+    use super::*;
+
+    /// A model stubbed the same way [`Fixture`] is, but whose history is
+    /// stamped from `seconds`, which the test advances by hand between
+    /// pushes instead of racing the wall clock.
+    fn model_with_controlled_clock() -> (AppModel, ScriptedSoundingSetSource, Arc<Mutex<u64>>) {
+        let naming = StubChordNaming::new();
+        naming.stub(
+            &c6(),
+            StubChordNaming::naming(
+                &c6(),
+                "C6",
+                "C major 6",
+                vec![StubAlternate::new(
+                    "Am7",
+                    SpellingOrigin::ReRooted,
+                    "A minor 7",
+                )],
+            ),
+        );
+        naming.stub(
+            &f_major(),
+            StubChordNaming::naming(&f_major(), "F", "F major", vec![]),
+        );
+        let source = ScriptedSoundingSetSource::default();
+        let store = InMemoryNoteStore::default();
+        let seconds = Arc::new(Mutex::new(0u64));
+        let for_clock = Arc::clone(&seconds);
+        let clock: Clock =
+            Box::new(move || UNIX_EPOCH + Duration::from_secs(*for_clock.lock().unwrap()));
+        let mut model = AppModel::with_clock(
+            Arc::new(naming),
+            Box::new(source.clone()),
+            Arc::new(store),
+            clock,
+        );
+        model.start();
+        (model, source, seconds)
+    }
+
+    #[test]
+    fn history_fills_to_capacity_and_drops_the_oldest() {
+        let (mut model, source, seconds) = model_with_controlled_clock();
+        // 66 distinct, strictly ascending single notes: MIDI 21..=86.
+        for offset in 0..66u64 {
+            *seconds.lock().unwrap() = offset;
+            let note = 21u8 + offset as u8;
+            source.send_midi_notes([note]);
+            let expected_key = SoundingSet::new([note]).key();
+            pump(&mut model, |m| {
+                m.frame()
+                    .history
+                    .last()
+                    .is_some_and(|entry| entry.key == expected_key)
+            });
+        }
+        assert_eq!(model.history_len(), 64);
+        let frame = model.frame();
+        assert_eq!(frame.history.len(), 64);
+        // The first two pushes (MIDI 21, 22) were dropped; the oldest
+        // survivor is the third push, MIDI 23.
+        assert_eq!(frame.history[0].key, SoundingSet::new([23u8]).key());
+        assert_eq!(
+            frame.history[63].key,
+            SoundingSet::new([21u8 + 65]).key(),
+            "the newest push is still the last entry"
+        );
+    }
+
+    #[test]
+    fn stepping_back_and_forward_moves_through_history_and_a_new_set_returns_to_live() {
+        let (mut model, source, seconds) = model_with_controlled_clock();
+        *seconds.lock().unwrap() = 0;
+        source.send_midi_notes([60, 64, 67, 69]); // C6
+        pump(&mut model, |m| m.headline_text() == "C6");
+        *seconds.lock().unwrap() = 5;
+        source.send_midi_notes([53, 57, 60]); // F major
+        pump(&mut model, |m| m.headline_text() == "F");
+        *seconds.lock().unwrap() = 12;
+        source.send_midi_notes([50]); // a third, declined entry
+        pump(&mut model, |m| m.headline_text() == "D");
+
+        assert_eq!(model.headline_text(), "D");
+        assert_eq!(model.frame().history_step, None, "starts live");
+
+        model.step_history_back();
+        let frame = model.frame();
+        assert_eq!(frame.headline_text, "F");
+        assert_eq!(
+            frame.state,
+            FrameState::Released,
+            "a stepped entry draws released"
+        );
+        assert_eq!(
+            frame.history_step,
+            Some(HistoryStep {
+                index: 2,
+                total: 64
+            })
+        );
+
+        model.step_history_back();
+        let frame = model.frame();
+        assert_eq!(frame.headline_text, "C6");
+        assert_eq!(
+            frame.history_step,
+            Some(HistoryStep {
+                index: 1,
+                total: 64
+            })
+        );
+
+        // Already at the oldest entry: stepping back again is a no-op.
+        model.step_history_back();
+        assert_eq!(
+            model.frame().history_step,
+            Some(HistoryStep {
+                index: 1,
+                total: 64
+            })
+        );
+
+        model.step_history_forward();
+        assert_eq!(model.frame().headline_text, "F");
+        model.step_history_forward();
+        let frame = model.frame();
+        assert_eq!(frame.headline_text, "D");
+        assert_eq!(
+            frame.history_step, None,
+            "forward past the newest returns to live"
+        );
+        assert_eq!(frame.state, FrameState::Held);
+
+        // Stepping away, then a new sounding set: the display returns to live.
+        model.step_history_back();
+        assert!(model.frame().history_step.is_some());
+        *seconds.lock().unwrap() = 20;
+        source.send_midi_notes([62, 65, 69]); // D minor-ish, not stubbed
+        pump(&mut model, |m| m.frame().history.len() == 4);
+        assert_eq!(model.frame().history_step, None);
+    }
+
+    #[test]
+    fn voice_leading_rides_along_each_entry_against_the_one_before_it() {
+        let (mut model, source, seconds) = model_with_controlled_clock();
+        *seconds.lock().unwrap() = 0;
+        source.send_midi_notes([60, 64, 67, 69]); // C6
+        pump(&mut model, |m| m.headline_text() == "C6");
+        *seconds.lock().unwrap() = 7;
+        source.send_midi_notes([53, 57, 60]); // F major
+        pump(&mut model, |m| m.headline_text() == "F");
+
+        let frame = model.frame();
+        assert_eq!(frame.history.len(), 2);
+        assert_eq!(
+            frame.history[0].voice_leading, None,
+            "nothing came before it"
+        );
+        assert_eq!(frame.history[0].seconds_since_previous, None);
+        assert_eq!(frame.history[1].seconds_since_previous, Some(7));
+        let vl = frame.history[1]
+            .voice_leading
+            .expect("a previous entry to lead from");
+        // The exact numbers are the theory crate's own tests; here we only
+        // assert the model actually attaches one.
+        assert!(vl.total_semitones > 0);
+    }
+
+    #[test]
+    fn the_history_strip_reads_oldest_first_matching_context_md() {
+        let (mut model, source, seconds) = model_with_controlled_clock();
+        *seconds.lock().unwrap() = 0;
+        source.send_midi_notes([60, 64, 67, 69]);
+        pump(&mut model, |m| m.headline_text() == "C6");
+        *seconds.lock().unwrap() = 1;
+        source.send_midi_notes([53, 57, 60]);
+        pump(&mut model, |m| m.headline_text() == "F");
+
+        let frame = model.frame();
+        let names: Vec<&str> = frame.history.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["C6", "F"], "oldest first, newest last");
+    }
+}
+
 // MARK: - Pedals, settle, the input picker, and arpeggio (ticket 13)
 
 mod pedal_tests {

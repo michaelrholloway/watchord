@@ -22,7 +22,8 @@
    3    Am7/E         reRooted   exact               89    A    C D E A A#            —         —         —
 
  ANNOTATIONS    none yet
-
+ HISTORY 1  C13/E   VOICE LEADING —
+ DRILL          off   TARGET —   NEXT TARGET —   GRADE —   DRILL STATS 0
  EDITING        —
  NOTES 0
    none yet
@@ -39,6 +40,5 @@
 
 
 
-
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DEL · E EDIT · S SORT · P DRILL · X MD · ^X JSON · ⇧ENTER NL · ENTER · Q QUIT

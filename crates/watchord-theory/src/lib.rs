@@ -1,12 +1,11 @@
-//! watchord-theory: every annotation as a pure function.
+//! watchord-theory: every annotation derived after the engine has ranked a
+//! reading — voicing, inversion, numeral, staff, voice leading. Nothing here
+//! touches the engine or the ranking (ADR-0002): each function is pure, over
+//! the sounding set and, where the fact needs it, the analysis, an optional
+//! key context, or the previous sounding set.
 //!
-//! Its input is the analysis, the sounding set, an optional key context, and
-//! an optional previous sounding set (spec #9, "Structure"). Nothing here
-//! touches the engine or the ranking — every fact derives from the engine's
-//! answer, never from inside it.
-//!
-//! Each annotation is its own module, added by its own ticket. This file is
-//! deliberately just a list of `pub mod` lines so that several tickets adding
-//! modules in the same run merge without touching each other's declarations.
+//! Kept to one `pub mod` line per function group so two tickets landing on
+//! this crate at once collide in a module file, never in this one.
 
 pub mod key_context;
+pub mod voice_leading;

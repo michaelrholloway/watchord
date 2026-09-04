@@ -9,7 +9,8 @@
 
 use std::io::{self, Stdout, Write};
 use std::panic;
-use std::time::Duration;
+use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
@@ -21,8 +22,9 @@ use crossterm::terminal::{
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use watchord_model::{AppModel, Screen};
+use watchord_model::{AppModel, Frame, Screen};
 
+use crate::export;
 use crate::screens::{self, Hits, ScrollTarget, UiState};
 use crate::{Skin, plain};
 
@@ -86,12 +88,22 @@ enum Action {
     Commit,
     Backspace,
     Type(char),
+    /// Steps the display one entry further into the past.
+    StepHistoryBack,
+    /// Steps the display one entry back toward now.
+    StepHistoryForward,
+    /// Writes the session as markdown.
+    ExportMarkdown,
+    /// Writes the session as JSON lines.
+    ExportJson,
     /// Inserts a line break into the active field, rather than committing.
     Newline,
     /// `e`: loads the selected note into the field for editing.
     EditSelected,
     /// `s`: steps All Notes to its next sort order.
     CycleSort,
+    /// `p`: enters drill if it is off, leaves it if it is on.
+    ToggleDrill,
     /// `i`: opens or closes the input picker (ticket 13).
     ToggleInputPicker,
     /// The picker is open: ↑ moves the highlight up, wrapping.
@@ -118,9 +130,15 @@ enum Action {
 /// The field takes every printable key, so the letter and symbol commands
 /// only fire when it is empty: `q` quits, `d` deletes the selected note, `e`
 /// edits it, `s` cycles the All Notes sort order, `i` opens the input picker,
-/// `-`/`+` adjust the settle window. Ctrl-C always quits. While the picker is
-/// open, ↑↓/enter/esc drive it instead of their usual selection and commit
-/// meanings.
+/// `-`/`+` adjust the settle window, `x` writes the session as markdown.
+/// Ctrl-C always quits; Ctrl-`x` writes the session as JSON lines regardless
+/// of the field. While the picker is open, ↑↓/enter/esc drive it instead of
+/// their usual selection and commit meanings.
+///
+/// `x` was `e` at first, but the notes ticket bound `e` to edit-selected-note
+/// first; moved per the conductor's ruling (ticket 12). Left/Right step
+/// history back/forward — non-printable, so they need no
+/// active-field-is-empty guard the way the letter keys do.
 ///
 /// Shift-Enter inserts a line break rather than committing. crossterm reports
 /// it as `KeyCode::Enter` with `KeyModifiers::SHIFT` on most terminals — this
@@ -141,6 +159,7 @@ fn action_for(
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     match key.code {
         KeyCode::Char('c') if ctrl => Action::Quit,
+        KeyCode::Char('x') if ctrl => Action::ExportJson,
         KeyCode::Up if picker_open => Action::PickerUp,
         KeyCode::Down if picker_open => Action::PickerDown,
         KeyCode::Enter if picker_open => Action::PickerSelect,
@@ -151,15 +170,19 @@ fn action_for(
         KeyCode::Char('s') if active_field_is_empty && screen == Screen::AllNotes => {
             Action::CycleSort
         }
+        KeyCode::Char('p') if active_field_is_empty => Action::ToggleDrill,
         KeyCode::Char('i') if active_field_is_empty => Action::ToggleInputPicker,
         KeyCode::Char('-') if active_field_is_empty => Action::SettleDown,
         KeyCode::Char('+') if active_field_is_empty => Action::SettleUp,
         KeyCode::Char('k') if active_field_is_empty => Action::CycleKeyTonic,
         KeyCode::Char('m') if active_field_is_empty => Action::ToggleKeyMode,
+        KeyCode::Char('x') if active_field_is_empty => Action::ExportMarkdown,
         KeyCode::Tab => Action::NextScreen,
         KeyCode::BackTab => Action::PreviousScreen,
         KeyCode::Up => Action::SelectUp,
         KeyCode::Down => Action::SelectDown,
+        KeyCode::Left => Action::StepHistoryBack,
+        KeyCode::Right => Action::StepHistoryForward,
         KeyCode::Esc => Action::ClearSelection,
         KeyCode::Enter if shift => Action::Newline,
         KeyCode::Enter => Action::Commit,
@@ -261,7 +284,12 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
                 model.begin_edit(&id);
             }
         }
+        Action::StepHistoryBack => model.step_history_back(),
+        Action::StepHistoryForward => model.step_history_forward(),
+        Action::ExportMarkdown => run_export(model, export::write_markdown),
+        Action::ExportJson => run_export(model, export::write_json_lines),
         Action::CycleSort => model.cycle_notes_sort(),
+        Action::ToggleDrill => model.toggle_drill(),
         Action::Commit => model.commit_note(),
         Action::Backspace => match screen {
             Screen::AllNotes => {
@@ -310,6 +338,25 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
         Action::Nothing => {}
     }
     true
+}
+
+/// Resolves the real sessions directory, writes with `write`, and reports the
+/// outcome on the model's error row — the same row a failed save uses.
+fn run_export(
+    model: &mut AppModel,
+    write: fn(&Frame, &Path, SystemTime) -> io::Result<std::path::PathBuf>,
+) {
+    let Some(directory) = export::sessions_directory() else {
+        model.set_status(Some(
+            "could not export — no home directory on this machine".to_string(),
+        ));
+        return;
+    };
+    let frame = model.frame();
+    match write(&frame, &directory, SystemTime::now()) {
+        Ok(path) => model.set_status(Some(format!("exported to {}", path.display()))),
+        Err(error) => model.set_status(Some(format!("could not export — {error}"))),
+    }
 }
 
 /// Draws one frame of `skin`. Returns what the mouse can hit in it.
@@ -577,6 +624,48 @@ mod tests {
                 false
             ),
             Action::Type('d')
+        );
+    }
+
+    #[test]
+    fn x_exports_only_with_an_empty_field_ctrl_x_exports_json_regardless() {
+        assert_eq!(
+            action_for(
+                key(KeyCode::Char('x')),
+                Screen::NowPlaying,
+                true,
+                false,
+                false
+            ),
+            Action::ExportMarkdown
+        );
+        assert_eq!(
+            action_for(
+                key(KeyCode::Char('x')),
+                Screen::NowPlaying,
+                false,
+                false,
+                false
+            ),
+            Action::Type('x'),
+            "typing into the draft still wins"
+        );
+        let ctrl_x = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL);
+        assert_eq!(
+            action_for(ctrl_x, Screen::NowPlaying, false, false, false),
+            Action::ExportJson
+        );
+    }
+
+    #[test]
+    fn left_and_right_step_history_regardless_of_the_draft() {
+        assert_eq!(
+            action_for(key(KeyCode::Left), Screen::NowPlaying, false, false, false),
+            Action::StepHistoryBack
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Right), Screen::NowPlaying, false, false, false),
+            Action::StepHistoryForward
         );
     }
 
