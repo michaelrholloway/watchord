@@ -12,6 +12,7 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 use std::time::Duration;
 
+use watchord_model::notes::tags_of;
 use watchord_model::{AppModel, Frame};
 
 use crate::composition::GraphKinds;
@@ -121,6 +122,12 @@ fn or_absent(value: Option<&str>) -> &str {
     }
 }
 
+/// A note's text on one labelled line: an embedded line break would otherwise
+/// read as a second, unlabelled line.
+fn single_line(text: &str) -> String {
+    text.replace('\n', " ⏎ ")
+}
+
 /// Every field of the frame, as `label: value` lines.
 pub fn render(frame: &Frame) -> String {
     let mut lines = Vec::new();
@@ -189,22 +196,47 @@ pub fn render(frame: &Frame) -> String {
     for note in &frame.notes {
         lines.push(format!(
             "note: {} (written as {})",
-            note.text, note.spelling_when_written
+            single_line(&note.text),
+            note.spelling_when_written
         ));
     }
     lines.push(format!("notes total: {}", frame.notes_total));
     lines.push(format!("draft: {}", or_absent(Some(frame.draft.as_str()))));
+    lines.push(format!(
+        "editing: {}",
+        if frame.editing { "yes" } else { ABSENT }
+    ));
+    lines.push(format!(
+        "search: {}",
+        or_absent(if frame.search.is_empty() {
+            None
+        } else {
+            Some(frame.search.as_str())
+        })
+    ));
+    lines.push(format!("sort: {}", frame.notes_sort.label()));
     for group in &frame.groups {
+        let tags = tags_of(group);
+        let tags_text = if tags.is_empty() {
+            ABSENT.to_string()
+        } else {
+            tags.iter()
+                .map(|t| format!("#{t}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
         lines.push(format!(
-            "group: {} · key {} · notes {}",
+            "group: {} · key {} · notes {} · tags {}",
             group.heading,
             group.key.raw(),
-            group.notes.len()
+            group.notes.len(),
+            tags_text,
         ));
         for note in &group.notes {
             lines.push(format!(
                 "group note: {} (written as {})",
-                note.text, note.spelling_when_written
+                single_line(&note.text),
+                note.spelling_when_written
             ));
         }
     }
