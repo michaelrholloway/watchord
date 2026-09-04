@@ -29,7 +29,7 @@ use crate::when;
 const ABSENT: &str = "—";
 
 /// The one-line key reference at the foot of every screen.
-const KEYS_HELP: &str = "tab screen · ↑↓ select · ←→ history · d delete · e export · ctrl-e export json · enter save · q quit";
+const KEYS_HELP: &str = "tab screen · ↑↓ select · ←→ history · d delete · x export · ctrl-x export json · enter save · q quit";
 
 /// The mark before the selected row.
 const SELECTED: &str = "> ";

@@ -107,8 +107,10 @@ enum Action {
 ///
 /// Two keys not already bound (tab, arrows, `d`, enter, `q`, mouse) step the
 /// history: `←` back, `→` forward — non-printable, so they need no
-/// draft-is-empty guard the way `q`/`d`/`e` do. `e` writes the session as
-/// markdown; Ctrl-`e` writes it as JSON lines — ticket 12.
+/// draft-is-empty guard the way `q`/`d`/`x` do. `x` writes the session as
+/// markdown; Ctrl-`x` writes it as JSON lines — ticket 12. `e` was the first
+/// choice but the notes ticket bound it to edit-selected-note first; moved
+/// per the conductor's ruling.
 fn action_for(key: KeyEvent, draft_is_empty: bool, has_selection: bool) -> Action {
     if key.kind == KeyEventKind::Release {
         return Action::Nothing;
@@ -116,10 +118,10 @@ fn action_for(key: KeyEvent, draft_is_empty: bool, has_selection: bool) -> Actio
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
         KeyCode::Char('c') if ctrl => Action::Quit,
-        KeyCode::Char('e') if ctrl => Action::ExportJson,
+        KeyCode::Char('x') if ctrl => Action::ExportJson,
         KeyCode::Char('q') if draft_is_empty => Action::Quit,
         KeyCode::Char('d') if draft_is_empty && has_selection => Action::DeleteSelected,
-        KeyCode::Char('e') if draft_is_empty => Action::ExportMarkdown,
+        KeyCode::Char('x') if draft_is_empty => Action::ExportMarkdown,
         KeyCode::Tab => Action::NextScreen,
         KeyCode::BackTab => Action::PreviousScreen,
         KeyCode::Up => Action::SelectUp,
@@ -477,6 +479,33 @@ mod tests {
         assert_eq!(
             action_for(key(KeyCode::Char('d')), false, true),
             Action::Type('d')
+        );
+    }
+
+    #[test]
+    fn x_exports_only_with_an_empty_field_ctrl_x_exports_json_regardless() {
+        assert_eq!(
+            action_for(key(KeyCode::Char('x')), true, false),
+            Action::ExportMarkdown
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Char('x')), false, false),
+            Action::Type('x'),
+            "typing into the draft still wins"
+        );
+        let ctrl_x = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL);
+        assert_eq!(action_for(ctrl_x, false, false), Action::ExportJson);
+    }
+
+    #[test]
+    fn left_and_right_step_history_regardless_of_the_draft() {
+        assert_eq!(
+            action_for(key(KeyCode::Left), false, false),
+            Action::StepHistoryBack
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Right), false, false),
+            Action::StepHistoryForward
         );
     }
 
