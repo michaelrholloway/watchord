@@ -4,6 +4,8 @@
  STATUS         —
  SCREEN         [Now Playing]    All Notes
 
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ PICKER   press i to choose an input
  HEADLINE       C  E
  APPROXIMATION  —
  SPOKEN         —
@@ -24,7 +26,5 @@
    C             1         0       YYYY-MM-DD HH:MM
  EDITING        —
  NOTES 0
-   none yet
-
  DRAFT          add a note…
  TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · P DRILL · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT

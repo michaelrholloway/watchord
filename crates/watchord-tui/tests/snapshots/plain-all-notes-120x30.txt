@@ -4,6 +4,8 @@
  STATUS         —
  SCREEN          Now Playing    [All Notes]
 
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ PICKER   press i to choose an input
  HEADLINE       C6
  APPROXIMATION  —
  SPOKEN         C major 6
@@ -23,8 +25,6 @@
  GROUP F   KEY 0.5.9   NOTES 1   TAGS —
    NOTE                                                                            WRITTEN AS  WHEN
    plain, but it lands                                                             F           YYYY-MM-DD HH:MM  delete
-
-
 
 
  TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · P DRILL · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT

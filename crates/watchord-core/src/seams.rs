@@ -1,8 +1,31 @@
 //! Ported from note-view `Sources/NoteViewCore/Seams.swift`.
 
 use std::sync::mpsc::Receiver;
+use std::time::Duration;
 
 use crate::{ChordAnalysis, ChordKey, ChordNote, SoundingSet};
+
+/// Which pedal a [`ControlEvent`] names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PedalKind {
+    /// CC64. Sustains keys released while it is down.
+    Sustain,
+    /// CC66. Ticket 13 repurposes it to toggle arpeggio mode.
+    Sostenuto,
+    /// CC67. Shown as a plate; nothing else reads it yet.
+    Soft,
+}
+
+/// One pedal moving up or down, as the source reports it. The third event on
+/// the [`SoundingSetSource`] seam, alongside a settled [`SoundingSet`] and the
+/// connected-inputs set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ControlEvent {
+    /// Which pedal.
+    pub pedal: PedalKind,
+    /// True when the pedal is now down.
+    pub down: bool,
+}
 
 /// Names a sounding set. Implemented by the engine's `NamingEngine`.
 ///
@@ -49,12 +72,38 @@ pub trait SoundingSetSource: Send {
         rx
     }
 
+    /// Yields a [`ControlEvent`] each time the sustain, sostenuto, or soft
+    /// pedal changes.
+    ///
+    /// Default: a source that has no pedals to report — every fake and every
+    /// scripted source unless it opts in. The channel is closed, so a
+    /// consumer's loop completes.
+    fn controls(&mut self) -> Receiver<ControlEvent> {
+        let (_tx, rx) = std::sync::mpsc::channel();
+        rx
+    }
+
     /// Start listening. Succeeding says nothing about whether anything is plugged
     /// in; `connected_inputs` is what reports that.
     fn start(&mut self) -> Result<(), SourceError>;
 
     /// Stop listening. Idempotent.
     fn stop(&mut self);
+
+    /// Adjusts the settle window live — no restart. Default: a no-op, for a
+    /// source with no window to adjust.
+    fn set_settle(&mut self, settle: Duration) {
+        let _ = settle;
+    }
+
+    /// Restricts the source to one named input, or clears the restriction to
+    /// listen to everything. Live — no restart.
+    ///
+    /// Default: a no-op, for a fake or a scripted source with no inputs to
+    /// choose among.
+    fn select_input(&mut self, name: Option<String>) {
+        let _ = name;
+    }
 }
 
 /// What can go wrong reading or writing the notes file.

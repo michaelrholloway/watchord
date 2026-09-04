@@ -76,6 +76,8 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
     }
 
     head(frame, &mut page, &mut hits);
+    pedals(frame, &mut page);
+    input_picker(frame, ui, &mut page);
     headline_block(frame, &mut page);
 
     let cursor = match frame.screen {
@@ -252,6 +254,52 @@ fn head(frame: &Frame, page: &mut Page, hits: &mut Hits) {
             let rect = page.put(y, x, &label);
             hits.tabs.push((rect, screen));
             x += label.width() as u16 + 3;
+        }
+    }
+    page.skip();
+}
+
+/// The three pedal plates, the settle plate, and the arpeggio plate — its own
+/// fn, called from one line in `draw_into`, so four parts editing `head`
+/// merge cleanly.
+fn pedals(frame: &Frame, page: &mut Page) {
+    page.text(&format!(
+        "SUSTAIN {}   SOSTENUTO {}   SOFT {}   SETTLE {} ms   ARPEGGIO {}",
+        pedal_word(frame.sustain),
+        pedal_word(frame.sostenuto),
+        pedal_word(frame.soft),
+        frame.settle_ms,
+        mode_word(frame.arpeggio),
+    ));
+}
+
+fn pedal_word(down: bool) -> &'static str {
+    if down { "DOWN" } else { "UP" }
+}
+
+fn mode_word(on: bool) -> &'static str {
+    if on { "ON" } else { "OFF" }
+}
+
+/// The input picker: `i` opens it, ↑↓ highlight, enter chooses, esc closes.
+/// The device names themselves are always on screen in the running head
+/// (`INPUTS`); this is only the chooser.
+fn input_picker(frame: &Frame, ui: &UiState, page: &mut Page) {
+    if !ui.input_picker_open {
+        page.text("PICKER   press i to choose an input");
+        return;
+    }
+    page.text("PICKER   OPEN — up/down choose, enter select, esc close");
+    if frame.inputs.is_empty() {
+        page.text(&format!("{UNSELECTED}none"));
+    } else {
+        for (index, name) in frame.inputs.iter().enumerate() {
+            let mark = if index == ui.input_picker_index {
+                SELECTED
+            } else {
+                UNSELECTED
+            };
+            page.text(&format!("{mark}{name}"));
         }
     }
     page.skip();

@@ -10,8 +10,8 @@
 
 use std::time::{Duration, Instant};
 
-use watchord_core::SoundingSet;
 use watchord_core::tuning;
+use watchord_core::{ControlEvent, PedalKind, SoundingSet};
 
 use crate::{HeldNoteTracker, MidiEvent};
 
@@ -44,10 +44,60 @@ impl SettleRelay {
 
     /// Feeds a batch of events through the tracker, restarting the settle
     /// window if — and only if — the sounding set actually changed.
-    pub fn receive(&mut self, events: impl IntoIterator<Item = MidiEvent>, now: Instant) {
+    ///
+    /// Returns every pedal that changed in this batch, sustain first — the
+    /// source seam's third event, alongside the settled `SoundingSet` that
+    /// `fire` yields separately. Pedal changes are never debounced: a plate
+    /// should read the pedal the instant it moves.
+    pub fn receive(
+        &mut self,
+        events: impl IntoIterator<Item = MidiEvent>,
+        now: Instant,
+    ) -> Vec<ControlEvent> {
+        let before = (
+            self.tracker.is_sustain_down(),
+            self.tracker.is_sostenuto_down(),
+            self.tracker.is_soft_down(),
+        );
         if self.tracker.apply_all(events) {
             self.due = Some(now + self.settle);
         }
+        let after = (
+            self.tracker.is_sustain_down(),
+            self.tracker.is_sostenuto_down(),
+            self.tracker.is_soft_down(),
+        );
+        let mut controls = Vec::new();
+        if before.0 != after.0 {
+            controls.push(ControlEvent {
+                pedal: PedalKind::Sustain,
+                down: after.0,
+            });
+        }
+        if before.1 != after.1 {
+            controls.push(ControlEvent {
+                pedal: PedalKind::Sostenuto,
+                down: after.1,
+            });
+        }
+        if before.2 != after.2 {
+            controls.push(ControlEvent {
+                pedal: PedalKind::Soft,
+                down: after.2,
+            });
+        }
+        controls
+    }
+
+    /// The settle window currently in effect.
+    pub fn settle(&self) -> Duration {
+        self.settle
+    }
+
+    /// Changes the settle window live. Does not disturb a pending emission's
+    /// deadline — only the next restart uses the new window.
+    pub fn set_settle(&mut self, settle: Duration) {
+        self.settle = settle;
     }
 
     /// When the owner should next call [`SettleRelay::fire`], or `None` when

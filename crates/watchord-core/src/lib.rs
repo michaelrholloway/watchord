@@ -22,5 +22,7 @@ pub use chord_reading::{ChordAnalysis, ChordFit, ChordReading, DeclineReason, Sp
 pub use display::{ChordRoot, NoteName, ReadingDisplay};
 pub use drill::{ChordVocabulary, DrillChordStat, DrillStoring, DrillTarget};
 pub use pitch_class::PitchClass;
-pub use seams::{ChordNaming, NoteStoring, SoundingSetSource, SourceError, StoreError};
+pub use seams::{
+    ChordNaming, ControlEvent, NoteStoring, PedalKind, SoundingSetSource, SourceError, StoreError,
+};
 pub use sounding_set::SoundingSet;
