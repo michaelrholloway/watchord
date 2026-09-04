@@ -37,6 +37,12 @@ pub struct HeldNoteTracker {
     sustained: BTreeSet<u8>,
     /// Whether CC64 last read at or above `tuning::SUSTAIN_ON_THRESHOLD`.
     sustain_down: bool,
+    /// Whether CC66 last read at or above the same threshold. Does not affect
+    /// what is sounding — ticket 13 repurposes this pedal at the model layer.
+    sostenuto_down: bool,
+    /// Whether CC67 last read at or above the same threshold. Shown as a
+    /// plate; nothing else reads it.
+    soft_down: bool,
 }
 
 impl HeldNoteTracker {
@@ -50,9 +56,19 @@ impl HeldNoteTracker {
         SoundingSet::new(self.held_notes())
     }
 
-    /// Whether the pedal is currently down.
+    /// Whether the sustain pedal is currently down.
     pub fn is_sustain_down(&self) -> bool {
         self.sustain_down
+    }
+
+    /// Whether the sostenuto pedal is currently down.
+    pub fn is_sostenuto_down(&self) -> bool {
+        self.sostenuto_down
+    }
+
+    /// Whether the soft pedal is currently down.
+    pub fn is_soft_down(&self) -> bool {
+        self.soft_down
     }
 
     /// Applies one event.
@@ -78,6 +94,10 @@ impl HeldNoteTracker {
             } => {
                 if controller == tuning::SUSTAIN_CONTROLLER {
                     self.set_sustain(value >= tuning::SUSTAIN_ON_THRESHOLD);
+                } else if controller == tuning::SOSTENUTO_CONTROLLER {
+                    self.sostenuto_down = value >= tuning::SUSTAIN_ON_THRESHOLD;
+                } else if controller == tuning::SOFT_PEDAL_CONTROLLER {
+                    self.soft_down = value >= tuning::SUSTAIN_ON_THRESHOLD;
                 }
             }
         }
@@ -104,6 +124,8 @@ impl HeldNoteTracker {
         self.pressed.clear();
         self.sustained.clear();
         self.sustain_down = false;
+        self.sostenuto_down = false;
+        self.soft_down = false;
     }
 
     fn held_notes(&self) -> BTreeSet<u8> {

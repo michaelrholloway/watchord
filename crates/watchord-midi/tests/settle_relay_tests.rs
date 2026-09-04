@@ -7,8 +7,8 @@
 
 use std::time::{Duration, Instant};
 
-use watchord_core::SoundingSet;
 use watchord_core::tuning;
+use watchord_core::{ControlEvent, PedalKind, SoundingSet};
 use watchord_midi::{MidiEvent, SettleRelay};
 
 const SETTLE: Duration = Duration::from_millis(60);
@@ -24,8 +24,11 @@ fn off(note: u8) -> MidiEvent {
     MidiEvent::NoteOff { note, channel: 0 }
 }
 fn pedal(value: u8) -> MidiEvent {
+    cc(64, value)
+}
+fn cc(controller: u8, value: u8) -> MidiEvent {
     MidiEvent::ControlChange {
-        controller: 64,
+        controller,
         value,
         channel: 0,
     }
@@ -212,6 +215,70 @@ fn the_relay_keeps_working_after_shut_down() {
 
     // 60 was forgotten by the reset, so only 67 is sounding.
     assert_eq!(h.emitted, [SoundingSet::new([67])]);
+}
+
+// MARK: - Control events (ticket 13)
+
+#[test]
+fn cc64_cc66_and_cc67_each_emit_a_control_event_on_and_off() {
+    let mut relay = SettleRelay::new(SETTLE);
+    let now = Instant::now();
+
+    let on_events = relay.receive([cc(64, 127), cc(66, 127), cc(67, 127)], now);
+    assert_eq!(
+        on_events,
+        [
+            ControlEvent {
+                pedal: PedalKind::Sustain,
+                down: true
+            },
+            ControlEvent {
+                pedal: PedalKind::Sostenuto,
+                down: true
+            },
+            ControlEvent {
+                pedal: PedalKind::Soft,
+                down: true
+            },
+        ]
+    );
+
+    let off_events = relay.receive([cc(64, 0), cc(66, 0), cc(67, 0)], now);
+    assert_eq!(
+        off_events,
+        [
+            ControlEvent {
+                pedal: PedalKind::Sustain,
+                down: false
+            },
+            ControlEvent {
+                pedal: PedalKind::Sostenuto,
+                down: false
+            },
+            ControlEvent {
+                pedal: PedalKind::Soft,
+                down: false
+            },
+        ]
+    );
+}
+
+#[test]
+fn a_control_event_that_does_not_change_a_pedal_emits_nothing() {
+    let mut relay = SettleRelay::new(SETTLE);
+    let now = Instant::now();
+    relay.receive([cc(64, 127)], now);
+    // The control: repeating the same value emits nothing further.
+    assert_eq!(relay.receive([cc(64, 127)], now), []);
+    // A note event alone — no pedal in the batch — also emits nothing.
+    assert_eq!(relay.receive([on(60)], now), []);
+}
+
+#[test]
+fn pedal_changes_are_not_debounced_by_the_settle_window() {
+    let mut h = Harness::new();
+    let events = h.relay.receive([cc(64, 127)], h.now);
+    assert_eq!(events.len(), 1, "reported on the same call, not after settle");
 }
 
 #[test]

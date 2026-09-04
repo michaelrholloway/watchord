@@ -53,6 +53,20 @@ fn mod_wheel(value: u8) -> MidiEvent {
         channel: 0,
     }
 }
+fn sostenuto(value: u8) -> MidiEvent {
+    MidiEvent::ControlChange {
+        controller: 66,
+        value,
+        channel: 0,
+    }
+}
+fn soft(value: u8) -> MidiEvent {
+    MidiEvent::ControlChange {
+        controller: 67,
+        value,
+        channel: 0,
+    }
+}
 
 // MARK: - The basics
 
@@ -375,6 +389,64 @@ fn reset_drops_held_notes_sustained_notes_and_the_pedal() {
     let changed = tracker.apply_all([on(67), off(67)]);
     assert!(!changed);
     assert!(tracker.sounding().is_empty());
+}
+
+// MARK: - Sostenuto and soft (ticket 13)
+
+#[test]
+fn sostenuto_and_soft_read_independently_of_sustain_and_of_each_other() {
+    let mut tracker = HeldNoteTracker::new();
+    assert!(!tracker.is_sostenuto_down());
+    assert!(!tracker.is_soft_down());
+
+    tracker.apply_all([sostenuto(127)]);
+    assert!(tracker.is_sostenuto_down());
+    assert!(!tracker.is_sustain_down());
+    assert!(!tracker.is_soft_down());
+
+    tracker.apply_all([soft(127)]);
+    assert!(tracker.is_soft_down());
+    assert!(tracker.is_sostenuto_down(), "soft must not clear sostenuto");
+
+    tracker.apply_all([sostenuto(0)]);
+    assert!(!tracker.is_sostenuto_down());
+    assert!(tracker.is_soft_down(), "sostenuto lifting must not clear soft");
+
+    tracker.apply_all([soft(0)]);
+    assert!(!tracker.is_soft_down());
+}
+
+#[test]
+fn sostenuto_and_soft_use_the_same_threshold_as_sustain() {
+    let mut tracker = HeldNoteTracker::new();
+    tracker.apply_all([sostenuto(tuning::SUSTAIN_ON_THRESHOLD - 1)]);
+    assert!(!tracker.is_sostenuto_down(), "one under the threshold is up");
+    tracker.apply_all([sostenuto(tuning::SUSTAIN_ON_THRESHOLD)]);
+    assert!(tracker.is_sostenuto_down(), "at the threshold is down");
+
+    tracker.apply_all([soft(tuning::SUSTAIN_ON_THRESHOLD - 1)]);
+    assert!(!tracker.is_soft_down());
+    tracker.apply_all([soft(tuning::SUSTAIN_ON_THRESHOLD)]);
+    assert!(tracker.is_soft_down());
+}
+
+#[test]
+fn sostenuto_and_soft_never_change_what_is_sounding() {
+    let mut tracker = HeldNoteTracker::new();
+    tracker.apply_all([on(60), on(64)]);
+    let before = tracker.sounding();
+    let sounding_changed = tracker.apply_all([sostenuto(127), soft(127), sostenuto(0), soft(0)]);
+    assert!(!sounding_changed);
+    assert_eq!(tracker.sounding(), before);
+}
+
+#[test]
+fn reset_also_drops_sostenuto_and_soft() {
+    let mut tracker = HeldNoteTracker::new();
+    tracker.apply_all([sostenuto(127), soft(127)]);
+    tracker.reset();
+    assert!(!tracker.is_sostenuto_down());
+    assert!(!tracker.is_soft_down());
 }
 
 // MARK: - Sounding set shape
