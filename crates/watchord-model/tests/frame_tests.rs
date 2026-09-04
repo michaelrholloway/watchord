@@ -70,7 +70,18 @@ fn the_frame_carries_what_the_screen_shows() {
     assert_eq!(frame.notes[0].text, "newer");
     assert_eq!(frame.groups.len(), 1);
     assert_eq!(frame.notes_total, 2);
-    assert!(frame.annotations.is_empty());
+    // watchord-theory (ticket #11) fills annotations for a real headline.
+    assert!(!frame.annotations.is_empty());
+    assert_eq!(
+        frame.annotations.inversion,
+        Some(watchord_theory::inversion::Inversion::Root)
+    );
+    assert!(frame.annotations.slash.is_none());
+    assert_eq!(
+        frame.annotations.voicing.as_ref().unwrap().shape,
+        watchord_theory::voicing::VoicingShape::Close
+    );
+    assert_eq!(frame.annotations.staff.len(), 4);
     assert_eq!(frame.readings().len(), 3);
 }
 
@@ -113,19 +124,33 @@ fn the_wire_shape_is_the_value_not_the_struct() {
     assert!(line.contains("\"key\":\"0.4.7.9\""), "{line}");
     assert!(line.contains("\"origin\":\"reRooted\""), "{line}");
     assert!(line.contains("\"fit\":\"exact\""), "{line}");
-    assert!(line.contains("\"annotations\":{}"), "{line}");
+    assert!(line.contains("\"inversion\":\"root\""), "{line}");
     assert!(line.contains("\"screen\":\"nowPlaying\""), "{line}");
 }
 
 #[test]
 fn a_frame_written_before_annotations_exist_still_reads() {
+    // A frame written before the `annotations` key existed at all has no such
+    // key in its JSON. `#[serde(default)]` must fill it with the empty
+    // `Annotations`, and every other field must come back untouched.
     let model = c6_model(vec![SoundingSet::new([60, 64, 67, 69])]);
     let frame = model.frame();
-    let line = serde_json::to_string(&frame).expect("serialises");
-    let without = line.replace("\"annotations\":{},", "");
-    assert_ne!(without, line, "the control: the field was there to remove");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&frame).expect("serialises"))
+            .expect("parses to a Value");
+    let removed = value
+        .as_object_mut()
+        .expect("a Frame serialises to a JSON object")
+        .remove("annotations");
+    assert!(
+        removed.is_some(),
+        "the control: the field was there to remove"
+    );
+    let without = serde_json::to_string(&value).expect("re-serialises");
     let back: Frame = serde_json::from_str(&without).expect("parses without annotations");
-    assert_eq!(back, frame);
+    let mut expected = frame;
+    expected.annotations = watchord_model::Annotations::default();
+    assert_eq!(back, expected);
 }
 
 #[test]

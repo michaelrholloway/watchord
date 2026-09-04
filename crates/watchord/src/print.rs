@@ -114,6 +114,82 @@ pub fn json_line(frame: &Frame) -> String {
     line
 }
 
+/// Every `watchord-theory` annotation as its own labelled line — inversion,
+/// slash, voicing (shape/span/rootless/doublings), upper structure, and the
+/// staff, one line per clef. Ticket #11.
+fn annotation_lines(frame: &Frame) -> Vec<String> {
+    let a = &frame.annotations;
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "inversion: {}",
+        a.inversion.map(|i| i.label()).unwrap_or(ABSENT)
+    ));
+    lines.push(format!("slash: {}", or_absent(a.slash.as_deref())));
+    match &a.voicing {
+        Some(v) => {
+            lines.push(format!("voicing: {}", v.shape.label()));
+            lines.push(format!("span: {}", v.span));
+            lines.push(format!(
+                "rootless: {}",
+                if v.rootless { "yes" } else { "no" }
+            ));
+            let doublings = if v.doublings.is_empty() {
+                ABSENT.to_string()
+            } else {
+                v.doublings
+                    .iter()
+                    .map(|d| {
+                        format!(
+                            "{} x{}",
+                            watchord_core::NoteName::pitch_class(d.pitch_class, false),
+                            d.count
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+            lines.push(format!("doublings: {doublings}"));
+        }
+        None => {
+            lines.push(format!("voicing: {ABSENT}"));
+            lines.push(format!("span: {ABSENT}"));
+            lines.push(format!("rootless: {ABSENT}"));
+            lines.push(format!("doublings: {ABSENT}"));
+        }
+    }
+    if a.upper_structures.is_empty() {
+        lines.push(format!("upper structure: {ABSENT}"));
+    } else {
+        for structure in &a.upper_structures {
+            lines.push(format!("upper structure: {structure}"));
+        }
+    }
+    for (label, clef) in [
+        ("treble", watchord_theory::staff::Clef::Treble),
+        ("bass", watchord_theory::staff::Clef::Bass),
+    ] {
+        let notes: Vec<_> = a.staff.iter().filter(|n| n.clef == clef).collect();
+        let value = if notes.is_empty() {
+            ABSENT.to_string()
+        } else {
+            notes
+                .iter()
+                .map(|n| {
+                    format!(
+                        "{}{}={}",
+                        n.spelled.letter,
+                        n.spelled.accidental.symbol(),
+                        watchord_core::NoteName::note(n.midi_note)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        lines.push(format!("{label}: {value}"));
+    }
+    lines
+}
+
 fn or_absent(value: Option<&str>) -> &str {
     match value {
         Some(text) if !text.is_empty() => text,
@@ -186,6 +262,7 @@ pub fn render(frame: &Frame) -> String {
             ""
         }
     ));
+    lines.extend(annotation_lines(frame));
     for note in &frame.notes {
         lines.push(format!(
             "note: {} (written as {})",

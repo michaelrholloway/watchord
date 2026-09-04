@@ -19,13 +19,13 @@
    2    Am7/C         reRooted   exact               90    A    C E G A               A minor 7
    3    CΔ6           enharmonic exact               89    C    C E G A               C major 6, major 7
 
- ANNOTATIONS    none yet
+ ANNOTATIONS
 
+ INVERSION root   SLASH —   VOICING close   SPAN 9   ROOTLESS no   DOUBLINGS —
+ UPPER STRUCTURE Am triad over C6   TREBLE C●C3 E●E3 G●G3 A●A3   BASS —
  NOTES 2
    try it with the 9 on top                                                                                      delete
    sounds like the Rhodes on Voodoo                                                                              delete
-
-
 
 
 

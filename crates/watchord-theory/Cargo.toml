@@ -1,6 +1,6 @@
 [package]
-name = "watchord-model"
-description = "watchord app model: the UI-independent state machine, and the fakes for its seams"
+name = "watchord-theory"
+description = "watchord annotations: voicing, inversion, slash, upper structure, staff — pure functions over an analysis, never the engine"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,10 +9,7 @@ repository.workspace = true
 
 [dependencies]
 watchord-core = { workspace = true, features = ["serde"] }
-watchord-theory = { workspace = true }
 serde = { workspace = true }
-uuid = { workspace = true }
 
 [dev-dependencies]
-uuid = { workspace = true }
 serde_json = { workspace = true }

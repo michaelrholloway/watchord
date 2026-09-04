@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 watchord-core = { workspace = true }
 watchord-model = { workspace = true }
+watchord-theory = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 unicode-width = { workspace = true }

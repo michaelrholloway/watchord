@@ -73,6 +73,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
         Screen::NowPlaying => {
             readings(frame, ui, &mut page, &mut hits);
             annotations(frame, &mut page);
+            voicing_and_staff(frame, &mut page);
             notes(frame, ui, &mut page, &mut hits);
             note_field(frame, field_row, &mut page, &mut hits)
         }
@@ -329,6 +330,100 @@ fn annotations(frame: &Frame, page: &mut Page) {
     };
     page.line("annotations", value);
     page.skip();
+}
+
+/// Inversion, slash, voicing, upper structure, and the staff — ticket #11.
+/// `watchord-theory::annotate` fills `Frame::annotations`; this draws it.
+///
+/// Michael, on a mock of the full nine-row staff: "maybe we dont need the full
+/// score or staves" — so the plain skin draws a compact one-line-per-clef list
+/// of note heads and names rather than ASCII staff lines, and packs every fact
+/// onto two rows; `StaffNote::row` still carries the real staff position for a
+/// later, styled skin to draw. Kept tight so it still fits the 30-row floor
+/// beside everything already there.
+fn voicing_and_staff(frame: &Frame, page: &mut Page) {
+    let a = &frame.annotations;
+
+    let inversion = a.inversion.map(|i| i.label()).unwrap_or(ABSENT);
+    let (shape, span, rootless, doublings) = match &a.voicing {
+        Some(v) => (
+            v.shape.label().to_string(),
+            v.span.to_string(),
+            if v.rootless { "yes" } else { "no" }.to_string(),
+            if v.doublings.is_empty() {
+                ABSENT.to_string()
+            } else {
+                v.doublings
+                    .iter()
+                    .map(|d| {
+                        format!(
+                            "{}x{}",
+                            watchord_core::NoteName::pitch_class(d.pitch_class, false),
+                            d.count
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            },
+        ),
+        None => (
+            ABSENT.to_string(),
+            ABSENT.to_string(),
+            ABSENT.to_string(),
+            ABSENT.to_string(),
+        ),
+    };
+    page.text(&format!(
+        "INVERSION {inversion}   SLASH {}   VOICING {shape}   SPAN {span}   ROOTLESS {rootless}   DOUBLINGS {doublings}",
+        or_absent(a.slash.as_deref())
+    ));
+
+    let upper_structure = if a.upper_structures.is_empty() {
+        ABSENT.to_string()
+    } else {
+        a.upper_structures.join(" · ")
+    };
+    page.text(&format!(
+        "UPPER STRUCTURE {upper_structure}   {}",
+        staff_summary(frame, page.area.height)
+    ));
+}
+
+/// `TREBLE  #C4●  ...  BASS  ...` on one line. `terminal_height` is the whole
+/// screen, matching the spec's "under 30 rows the bass staff drops" literally
+/// — the plain-skin snapshot tests at 30/44/60 rows all still show both.
+fn staff_summary(frame: &Frame, terminal_height: u16) -> String {
+    use watchord_theory::staff::Clef;
+    let mut both = Vec::new();
+    for (label, clef) in [("TREBLE", Clef::Treble), ("BASS", Clef::Bass)] {
+        if clef == Clef::Bass && terminal_height < 30 {
+            continue;
+        }
+        let notes: Vec<_> = frame
+            .annotations
+            .staff
+            .iter()
+            .filter(|n| n.clef == clef)
+            .collect();
+        let value = if notes.is_empty() {
+            ABSENT.to_string()
+        } else {
+            notes
+                .iter()
+                .map(|n| {
+                    format!(
+                        "{}{}●{}",
+                        n.spelled.accidental.symbol(),
+                        n.spelled.letter,
+                        watchord_core::NoteName::note(n.midi_note)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        both.push(format!("{label} {value}"));
+    }
+    both.join("   ")
 }
 
 /// The notes on the displayed chord, newest first, a `delete` on each row.

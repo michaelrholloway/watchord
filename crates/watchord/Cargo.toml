@@ -21,6 +21,7 @@ watchord-engine = { workspace = true }
 watchord-store = { workspace = true }
 watchord-midi = { workspace = true }
 watchord-model = { workspace = true }
+watchord-theory = { workspace = true }
 watchord-tui = { workspace = true }
 uuid = { workspace = true }
 serde_json = { workspace = true }
