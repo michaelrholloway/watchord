@@ -70,3 +70,22 @@ impl SoundingSet {
         self.pitch_classes().len()
     }
 }
+
+/// Encoded as a bare array of MIDI note numbers — `[60,64,67,69]`, not
+/// `{"midi_notes":[...]}`. Same reasoning as `PitchClass`: the wire shape is the
+/// value, and the way back in goes through `new`, so a stray duplicate or a
+/// wrong order cannot arrive.
+#[cfg(feature = "serde")]
+impl serde::Serialize for SoundingSet {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.midi_notes.serialize(s)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for SoundingSet {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let notes = Vec::<u8>::deserialize(d)?;
+        Ok(SoundingSet::new(notes))
+    }
+}

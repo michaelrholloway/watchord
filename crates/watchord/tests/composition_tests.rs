@@ -8,6 +8,11 @@
 
 use std::process::Command;
 
+use watchord_model::Frame;
+
+/// A label no renderer emits. The grep must miss it, or the grep is not a test.
+const CONTROL_LABEL: &str = "ZZZ_NOT_A_FIELD";
+
 fn watchord(args: &[&str]) -> (String, String, bool) {
     let output = Command::new(env!("CARGO_BIN_EXE_watchord"))
         .args(args)
@@ -75,4 +80,63 @@ fn version_prints_the_crate_version() {
         out.trim(),
         format!("watchord {}", env!("CARGO_PKG_VERSION"))
     );
+}
+
+#[test]
+fn print_lists_every_frame_label_and_not_the_control() {
+    let (out, _, ok) = watchord(&["--fake", "--print"]);
+    assert!(ok);
+    for label in Frame::LABELS {
+        assert!(out.contains(label), "no {label:?} label in --print:\n{out}");
+    }
+    assert!(
+        !out.contains(CONTROL_LABEL),
+        "the control label is present, so the grep proves nothing:\n{out}"
+    );
+    // Each reading carries the facts it was ranked on.
+    assert!(out.contains("reading: C6 · rank 1 · origin headline · fit exact · score 100 · root C · claimed C E G A · spoken C major 6"), "{out}");
+    assert!(out.contains("alternate: Am7/C · rank 2 · origin reRooted · fit exact · score 90 · root A · claimed C E G A"), "{out}");
+    // An absent optional field keeps its label.
+    assert!(out.contains("\nstatus: —\n"), "{out}");
+    assert!(out.contains("\ndeclined: —\n"), "{out}");
+    assert!(out.contains("\nsounding: 60 64 67 69\n"), "{out}");
+    assert!(out.contains("\nkey: 0.4.7.9\n"), "{out}");
+    assert!(
+        out.contains("\ngroup: C6 · key 0.4.7.9 · notes 2\n"),
+        "{out}"
+    );
+}
+
+#[test]
+fn json_prints_one_line_that_parses_back_into_an_equal_frame() {
+    let (out, err, ok) = watchord(&["--fake", "--json"]);
+    assert!(ok);
+    assert!(
+        err.contains("graph:"),
+        "the graph note goes to stderr:\n{err}"
+    );
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 1, "one line per settled sounding set:\n{out}");
+    let frame: Frame = serde_json::from_str(lines[0]).expect("the line is a Frame");
+    assert_eq!(frame.headline_text, "C6");
+    assert_eq!(frame.sounding.midi_notes(), [60, 64, 67, 69]);
+    assert_eq!(frame.alternates.len(), 2);
+    assert_eq!(frame.notes.len(), 2);
+    // Equal after a second round: the value is stable, not merely parseable.
+    let again = serde_json::to_string(&frame).expect("serialises");
+    assert_eq!(again, lines[0]);
+    let back: Frame = serde_json::from_str(&again).expect("parses again");
+    assert_eq!(back, frame);
+}
+
+#[test]
+fn the_plain_skin_is_a_launch_choice() {
+    // The skin only changes how the frame is drawn; headless output is the same.
+    let (plain, _, ok) = watchord(&["--fake", "--skin", "plain", "--print"]);
+    assert!(ok);
+    let (push, _, _) = watchord(&["--fake", "--print"]);
+    assert_eq!(plain, push);
+    let (_, err, ok) = watchord(&["--fake", "--skin", "neon", "--print"]);
+    assert!(!ok);
+    assert!(err.contains("neon"), "{err}");
 }

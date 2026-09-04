@@ -10,6 +10,11 @@ use crate::ChordKey;
 /// file contract, ADR-0004. The store crate owns that encoding; this type carries
 /// the values.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "camelCase")
+)]
 pub struct ChordNote {
     /// The note's identity, as note-view writes it: a UUID string.
     pub id: String,

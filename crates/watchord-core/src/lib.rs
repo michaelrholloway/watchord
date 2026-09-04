@@ -20,5 +20,5 @@ pub use chord_note::ChordNote;
 pub use chord_reading::{ChordAnalysis, ChordFit, ChordReading, DeclineReason, SpellingOrigin};
 pub use display::{ChordRoot, NoteName, ReadingDisplay};
 pub use pitch_class::PitchClass;
-pub use seams::{ChordNaming, Frame, NoteStoring, SoundingSetSource, SourceError, StoreError};
+pub use seams::{ChordNaming, NoteStoring, SoundingSetSource, SourceError, StoreError};
 pub use sounding_set::SoundingSet;

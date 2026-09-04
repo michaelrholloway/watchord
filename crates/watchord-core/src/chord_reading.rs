@@ -9,6 +9,11 @@ use crate::{ChordKey, PitchClass, SoundingSet};
 /// Both axes are real and they are different operations, so the UI labels them
 /// separately rather than pooling them into one undifferentiated list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "camelCase")
+)]
 pub enum SpellingOrigin {
     /// Rank 1 — the headline.
     Headline,
@@ -41,6 +46,11 @@ impl SpellingOrigin {
 /// Ranked strictly by tier before anything else, so an exact name always beats an
 /// approximate one and `Nearest` appears only when nothing fits.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "camelCase")
+)]
 pub enum ChordFit {
     /// The reading's pitch classes equal the sounding keys exactly.
     Exact,

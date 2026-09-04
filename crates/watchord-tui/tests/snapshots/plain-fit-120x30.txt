@@ -1,0 +1,30 @@
+ WATCHORD   NOTES TOTAL 0
+ INPUT fake   STATE held   INPUTS —
+ BANNER         fake input — fit tiers are stubbed, no MIDI hardware is being read
+ STATUS         —
+ SCREEN         [Now Playing]    All Notes
+
+ HEADLINE       C13/E
+ APPROXIMATION  —
+ SPOKEN         C major, minor 7, 13
+ FIT            ·no5 ·no11
+ DECLINED       —
+ KEYS           E3  C4  A#4  D5  A5
+ KEY            0.2.4.9.10
+ SOUNDING       64 72 82 86 93
+
+ READINGS 3 · HEADLINE 1 · ALTERNATES 2
+   RANK NAME          ORIGIN     FIT                 SCORE ROOT CLAIMED               SPOKEN
+   1    C13/E         headline   missing ·no5 ·no11  100   C    C D E F G A A#        C major, minor 7, 13
+   2    Cm7/E ≈       reRooted   nearest             90    C    C D# G A#             C minor 7
+   3    Am7/E         reRooted   exact               89    A    C D E A A#            A minor 7
+
+ ANNOTATIONS    none yet
+
+ NOTES 0
+   none yet
+
+
+
+ DRAFT          add a note…
+ TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT

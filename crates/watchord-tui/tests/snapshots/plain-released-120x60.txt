@@ -1,0 +1,60 @@
+ WATCHORD   NOTES TOTAL 3
+ INPUT fake   STATE released   INPUTS —
+ BANNER         fake input — no MIDI hardware is being read
+ STATUS         —
+ SCREEN         [Now Playing]    All Notes
+
+ HEADLINE       C6
+ APPROXIMATION  —
+ SPOKEN         C major 6
+ FIT            —
+ DECLINED       —
+ KEYS           C3  E3  G3  A3
+ KEY            0.4.7.9
+ SOUNDING       60 64 67 69
+
+ READINGS 3 · HEADLINE 1 · ALTERNATES 2
+   RANK NAME          ORIGIN     FIT                 SCORE ROOT CLAIMED               SPOKEN
+   1    C6            headline   exact               100   C    C E G A               C major 6
+   2    Am7/C         reRooted   exact               90    A    C E G A               A minor 7
+   3    CΔ6           enharmonic exact               89    C    C E G A               C major 6, major 7
+
+ ANNOTATIONS    none yet
+
+ NOTES 2
+   try it with the 9 on top                                                                                      delete
+   sounds like the Rhodes on Voodoo                                                                              delete
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ DRAFT          add a note…
+ TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT

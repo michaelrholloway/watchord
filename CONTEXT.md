@@ -129,6 +129,68 @@ A small bordered chip that reports one fact of the app's own state — `INPUT`,
 `STATE`, `RELEASED`. PUSH's `p-plate`. A plate always reads something real; a plate
 reading a constant is cut.
 
+### Frame `[coined]`
+
+One value that holds everything the screen shows: the sounding set, the key,
+the headline, every alternate with its score, origin, root, fit and claimed
+pitch classes, the notes, and a slot for annotations. Both skins draw from it,
+`--print` prints it, `--json` streams it. So the screen and the pipe cannot
+disagree. See ADR-0005.
+
+## The plain skin and what it shows
+
+Words from the v2 spec (#9). They name the second skin and the facts it puts on
+screen. The ones marked `[coined]` were coined by an agent, not by Michael.
+
+### Plain skin
+
+The black-and-white skin that shows every field with no decoration. Michael's
+words: *"the most basic skin, just white and black, minimal terminal ui."*
+Chosen with `--skin plain`. The terminal's own foreground and background, no
+colour token, no box drawing, section labels in UPPERCASE, tables aligned with
+spaces, the headline as one line of text. Nothing hides behind a density tier.
+
+### Annotation `[coined]`
+
+A fact derived from an analysis after the engine has ranked it: voicing,
+inversion, numeral, staff position. An annotation never changes a reading or
+its rank.
+
+### History `[coined]`
+
+The settled sounding sets of this session, newest last, with the time between
+them.
+
+### Key context `[coined]`
+
+A tonic and a mode the user sets by hand. It relabels readings; it never
+re-ranks them.
+
+### Drill `[coined]`
+
+A mode where the app names a target chord and grades what is played with the
+fit tiers.
+
+### Arpeggio mode `[coined]`
+
+A mode where notes played one at a time accumulate into one sounding set until
+the pedal lifts.
+
+### Pipe mode `[coined]`
+
+`--json`: one line of JSON per settled sounding set on stdout, for other
+programs.
+
+### Upper structure `[coined]`
+
+A major or minor triad inside the sounding set whose root is not the headline's
+root. Shown beside the headline, not ranked.
+
+### Staff
+
+The current chord drawn as note heads on a treble and a bass staff, spelled as
+the headline spells it. Michael's word.
+
 ## The notation
 
 **Ruled live by Michael, 2026-08-10.** A quality symbol always describes the
@@ -211,6 +273,7 @@ stay in note-view's tracker and ADRs; watchord inherits them and does not restat
 ## Standing constraints
 
 - **The look is PUSH, as a terminal skin.** `docs/PUSH.md` is the standard;
-  ADR-0003 lists every terminal departure with its reason.
+  ADR-0003 lists every terminal departure with its reason. The plain skin sits
+  beside it, chosen with `--skin plain`, and does not change PUSH (ADR-0005).
 - **The app listens and never sounds.** No MIDI output, no audio.
 - **One sounding chord at a time.** Progression and key analysis are out of scope.

@@ -1,5 +1,4 @@
-//! Ported from note-view `Sources/NoteViewCore/Seams.swift`, plus the terminal
-//! skin's own seam, `Frame`.
+//! Ported from note-view `Sources/NoteViewCore/Seams.swift`.
 
 use std::sync::mpsc::Receiver;
 
@@ -82,20 +81,4 @@ pub trait NoteStoring: Send + Sync {
     fn add(&self, text: &str, key: &ChordKey, spelling: &str) -> Result<ChordNote, StoreError>;
     /// Remove one note by id.
     fn delete(&self, id: &str) -> Result<(), StoreError>;
-}
-
-/// The terminal skin's seam: draws a model snapshot into a buffer.
-///
-/// The model is the terminal-free state machine; a `Frame` is the one thing that
-/// turns it into cells. Minimal on purpose — the tui ticket grows it. The snapshot
-/// and buffer types are the implementor's, so this crate stays free of terminal
-/// code.
-pub trait Frame {
-    /// What one frame is drawn from.
-    type Snapshot;
-    /// Where it is drawn to.
-    type Buffer;
-
-    /// Draw `snapshot` into `buffer`.
-    fn draw(&self, snapshot: &Self::Snapshot, buffer: &mut Self::Buffer);
 }

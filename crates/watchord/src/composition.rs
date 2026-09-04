@@ -18,6 +18,7 @@ use watchord_model::fakes::{
 };
 use watchord_model::{AppModel, Screen, seconds_ago};
 use watchord_store::JsonNotesStore;
+use watchord_tui::Skin;
 
 /// What the command line asked for.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -31,6 +32,11 @@ pub struct LaunchArgs {
     pub input: Option<String>,
     /// Run the model headless and print what it shows, instead of drawing.
     pub print: bool,
+    /// Run the model headless and stream one JSON line per settled sounding
+    /// set — pipe mode.
+    pub json: bool,
+    /// `--skin push|plain`. PUSH unless asked.
+    pub skin: Skin,
     pub version: bool,
     pub help: bool,
 }
@@ -50,19 +56,39 @@ impl LaunchArgs {
                 "--fake-nearest" => parsed.fake_nearest = true,
                 "--all-notes" => parsed.all_notes = true,
                 "--print" => parsed.print = true,
+                "--json" => parsed.json = true,
+                "--skin" => match args.next() {
+                    Some(name) => Self::set_skin(&mut parsed, &name, &mut unknown),
+                    None => unknown.push("--skin needs a name: push or plain".to_string()),
+                },
                 "--version" | "-V" => parsed.version = true,
                 "--help" | "-h" => parsed.help = true,
                 "--input" => match args.next() {
                     Some(name) => parsed.input = Some(name),
                     None => unknown.push("--input needs a name".to_string()),
                 },
-                other => match other.strip_prefix("--input=") {
-                    Some(name) => parsed.input = Some(name.to_string()),
-                    None => unknown.push(other.to_string()),
-                },
+                other => {
+                    if let Some(name) = other.strip_prefix("--input=") {
+                        parsed.input = Some(name.to_string());
+                    } else if let Some(name) = other.strip_prefix("--skin=") {
+                        Self::set_skin(&mut parsed, name, &mut unknown);
+                    } else {
+                        unknown.push(other.to_string());
+                    }
+                }
             }
         }
         (parsed, unknown)
+    }
+
+    fn set_skin(parsed: &mut LaunchArgs, name: &str, unknown: &mut Vec<String>) {
+        match Skin::parse(name) {
+            Some(skin) => parsed.skin = skin,
+            None => unknown.push(format!(
+                "--skin {name:?} is not one of {}",
+                Skin::NAMES.join(", ")
+            )),
+        }
     }
 }
 
@@ -352,6 +378,22 @@ mod tests {
         let graph = Composition::for_launch(&args);
         assert_eq!(graph.screen, Screen::AllNotes);
         assert_eq!(graph.make_model().screen, Screen::AllNotes);
+    }
+
+    #[test]
+    fn skin_takes_a_name_in_either_spelling_and_defaults_to_push() {
+        let (args, unknown) = LaunchArgs::parse(["--skin".to_string(), "plain".to_string()]);
+        assert!(unknown.is_empty());
+        assert_eq!(args.skin, Skin::Plain);
+        let (args, _) = LaunchArgs::parse(["--skin=push".to_string()]);
+        assert_eq!(args.skin, Skin::Push);
+        let (args, _) = LaunchArgs::parse(["--fake".to_string()]);
+        assert_eq!(args.skin, Skin::Push);
+        let (_, unknown) = LaunchArgs::parse(["--skin".to_string(), "neon".to_string()]);
+        assert_eq!(unknown.len(), 1, "{unknown:?}");
+        assert!(unknown[0].contains("neon"));
+        let (_, unknown) = LaunchArgs::parse(["--skin".to_string()]);
+        assert_eq!(unknown, ["--skin needs a name: push or plain"]);
     }
 
     #[test]

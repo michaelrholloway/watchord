@@ -1917,6 +1917,7 @@ dependencies = [
 name = "watchord"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "uuid",
  "watchord-core",
  "watchord-engine",
@@ -1958,6 +1959,8 @@ dependencies = [
 name = "watchord-model"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "uuid",
  "watchord-core",
 ]

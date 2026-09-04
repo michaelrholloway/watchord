@@ -2,7 +2,7 @@
 //! note-view's `RootView.swift`, `NowPlayingScreen.swift` and
 //! `AllNotesScreen.swift`.
 //!
-//! Everything drawn here is read off [`AppModel`]. The screens make no
+//! Everything drawn here is read off a [`Frame`]. The screens make no
 //! decisions; they apply PUSH's roles and elements from [`crate::push`] and
 //! never write a rule or a box themselves.
 //!
@@ -10,7 +10,6 @@
 //! device set, the STATE plate reads the sounding stream, the folio counts
 //! notes, the keys line lists the notes down. There is no ornament.
 
-use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Position, Rect};
 use ratatui::style::Style;
@@ -18,7 +17,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
 use unicode_width::UnicodeWidthStr;
 use watchord_core::SpellingOrigin;
-use watchord_model::{AppModel, Screen};
+use watchord_model::{Frame, Screen};
 
 use crate::figure;
 use crate::push::{
@@ -191,19 +190,19 @@ impl Density {
 const KEYS_HELP: &str = "tab screen · ↑↓ select · d delete · enter save · q quit";
 
 /// Draws the whole frame. Returns what the mouse can hit in it.
-pub fn draw(frame: &mut Frame, model: &AppModel, ui: &UiState) -> Hits {
-    let area = frame.area();
-    let buf = frame.buffer_mut();
+pub fn draw(target: &mut ratatui::Frame, frame: &Frame, ui: &UiState) -> Hits {
+    let area = target.area();
+    let buf = target.buffer_mut();
     buf.set_style(area, push::page());
-    let drawn = draw_into(area, buf, model, ui);
+    let drawn = draw_into(area, buf, frame, ui);
     if let Some(position) = drawn.cursor {
-        frame.set_cursor_position(position);
+        target.set_cursor_position(position);
     }
     drawn.hits
 }
 
 /// Draws the whole frame into a buffer.
-pub fn draw_into(area: Rect, buf: &mut Buffer, model: &AppModel, ui: &UiState) -> Drawn {
+pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> Drawn {
     let mut hits = Hits::default();
     let density = Density::for_height(area.height);
     let compact = density.packed;
@@ -216,28 +215,28 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, model: &AppModel, ui: &UiState) -
     let mut cursor = Cursor::new(inner);
 
     // c-running-head: three slots, folio = note count for the screen it is over.
-    let folio = match model.screen {
-        Screen::NowPlaying => format!("{} notes", model.notes_for_displayed_chord().len()),
-        Screen::AllNotes => format!("{} notes", model.total_note_count()),
+    let folio = match frame.screen {
+        Screen::NowPlaying => format!("{} notes", frame.notes.len()),
+        Screen::AllNotes => format!("{} notes", frame.notes_total),
     };
     let head = cursor.take(push::RUNNING_HEAD_HEIGHT);
     push::running_head(
-        &["watchord", "chord displayer", model.screen.title()],
+        &["watchord", "chord displayer", frame.screen.title()],
         &folio,
         head,
         buf,
     );
 
-    head_band(model, compact, &mut cursor, buf);
+    head_band(frame, compact, &mut cursor, buf);
 
-    if let Some(status) = model.status_message() {
+    if let Some(status) = frame.status.as_deref() {
         error_row(status, &mut cursor, buf);
     }
 
     let tabs = cursor.take(push::tabs_height(compact));
     let selected_tab = Screen::ALL
         .iter()
-        .position(|s| *s == model.screen)
+        .position(|s| *s == frame.screen)
         .unwrap_or(0);
     let tab_rects = push::tabs(
         &[Screen::NowPlaying.title(), Screen::AllNotes.title()],
@@ -255,10 +254,10 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, model: &AppModel, ui: &UiState) -
     let help = cursor.take_bottom(1);
     Paragraph::new(Line::from(push::meta(KEYS_HELP))).render(help, buf);
 
-    let cursor = match model.screen {
-        Screen::NowPlaying => now_playing(model, ui, density, cursor, buf, &mut hits),
+    let cursor = match frame.screen {
+        Screen::NowPlaying => now_playing(frame, ui, density, cursor, buf, &mut hits),
         Screen::AllNotes => {
-            all_notes(model, ui, density, cursor, buf, &mut hits);
+            all_notes(frame, ui, density, cursor, buf, &mut hits);
             None
         }
     };
@@ -317,20 +316,20 @@ impl Cursor {
 // MARK: - Chrome
 
 /// The head band: the INPUT and STATE plates. Both read live state.
-fn head_band(model: &AppModel, compact: bool, cursor: &mut Cursor, buf: &mut Buffer) {
-    let input_tone = if model.banner().is_some() {
+fn head_band(frame: &Frame, compact: bool, cursor: &mut Cursor, buf: &mut Buffer) {
+    let input_tone = if frame.banner.as_deref().is_some() {
         PlateTone::Signal4
-    } else if model.has_no_input() {
+    } else if frame.has_no_input() {
         PlateTone::Signal2
     } else {
         PlateTone::Accent
     };
-    let input = Plate::new(model.input_label())
+    let input = Plate::new(frame.input.clone())
         .title("input")
         .tone(input_tone);
-    let state_label = if model.displayed().is_none() {
+    let state_label = if frame.is_idle() {
         "idle"
-    } else if model.is_released() {
+    } else if frame.is_released() {
         "released"
     } else {
         "held"
@@ -391,7 +390,7 @@ fn error_row(status: &str, cursor: &mut Cursor, buf: &mut Buffer) {
 // MARK: - Now Playing
 
 fn now_playing(
-    model: &AppModel,
+    frame: &Frame,
     ui: &UiState,
     density: Density,
     mut cursor: Cursor,
@@ -400,7 +399,7 @@ fn now_playing(
 ) -> Option<(u16, u16)> {
     // The note field is anchored at the foot, above the key reference, so it is
     // never the thing a short terminal clips.
-    let hint = if model.note_target_key().is_none() {
+    let hint = if frame.note_target_key().is_none() {
         1
     } else {
         0
@@ -413,36 +412,36 @@ fn now_playing(
         block
     };
 
-    display(model, density, &mut cursor, buf);
+    display(frame, density, &mut cursor, buf);
     if density.roomy {
         cursor.skip(1);
     }
-    alternates(model, ui, density, &mut cursor, buf, hits);
-    particulars(model, density, &mut cursor, buf);
-    notes_on_this_chord(model, ui, density, &mut cursor, buf, hits);
+    alternates(frame, ui, density, &mut cursor, buf, hits);
+    particulars(frame, density, &mut cursor, buf);
+    notes_on_this_chord(frame, ui, density, &mut cursor, buf, hits);
 
     hits.field = Some(Rect {
         height: 1.min(field_area.height),
         ..field_area
     });
-    note_field(model, field_area, buf)
+    note_field(frame, field_area, buf)
 }
 
 /// The display panel: the headline figure with `≈` beside it, the spoken name,
 /// the fit note, the decline sentence, the `released` plate, and the waiting
 /// line. The one panel on the screen that is live.
-fn display(model: &AppModel, density: Density, cursor: &mut Cursor, buf: &mut Buffer) {
+fn display(frame: &Frame, density: Density, cursor: &mut Cursor, buf: &mut Buffer) {
     let compact = density.packed;
-    let text = model.headline_text();
-    let figure_text = match model.headline_approximation() {
+    let text = frame.headline_text.clone();
+    let figure_text = match frame.headline_approximation() {
         Some(mark) => format!("{text} {mark}"),
         None => text,
     };
-    let spoken = model.headline_spoken();
-    let fit = model.headline_fit_note();
-    let decline = model.decline_reason();
-    let released = model.is_released();
-    let waiting = model.displayed().is_none();
+    let spoken = frame.headline_spoken();
+    let fit = frame.headline_fit_note();
+    let decline = frame.declined.as_deref();
+    let released = frame.is_released();
+    let waiting = frame.is_idle();
 
     let pad = if density.roomy { 1 } else { 0 };
     let block = push::panel();
@@ -554,14 +553,14 @@ const ALTERNATE_COLUMNS: [Column; 4] = [
 
 /// Section 01: a real table of the readings beneath the headline.
 fn alternates(
-    model: &AppModel,
+    frame: &Frame,
     ui: &UiState,
     density: Density,
     cursor: &mut Cursor,
     buf: &mut Buffer,
     hits: &mut Hits,
 ) {
-    let readings = model.alternates();
+    let readings = &frame.alternates;
     if readings.is_empty() {
         return;
     }
@@ -608,8 +607,8 @@ fn alternates(
 }
 
 /// The keys cluster: one term, one description, on a panel.
-fn particulars(model: &AppModel, density: Density, cursor: &mut Cursor, buf: &mut Buffer) {
-    let keys = model.keys_row();
+fn particulars(frame: &Frame, density: Density, cursor: &mut Cursor, buf: &mut Buffer) {
+    let keys = frame.keys.clone();
     if keys.is_empty() {
         return;
     }
@@ -648,14 +647,14 @@ const NOTE_COLUMNS: [Column; 2] = [
 
 /// Section 02: the notes on the displayed chord, with a `delete` per row.
 fn notes_on_this_chord(
-    model: &AppModel,
+    frame: &Frame,
     ui: &UiState,
     density: Density,
     cursor: &mut Cursor,
     buf: &mut Buffer,
     hits: &mut Hits,
 ) {
-    let notes = model.notes_for_displayed_chord();
+    let notes = &frame.notes;
     let head = cursor.take(push::section_head_height(density.section_rule()));
     push::section_head(
         "02",
@@ -714,17 +713,17 @@ fn scroll_to(selected: Option<usize>, visible: usize) -> usize {
 
 /// The always-present note field, marked at its start like a row. Returns the
 /// cursor position inside it.
-fn note_field(model: &AppModel, area: Rect, buf: &mut Buffer) -> Option<(u16, u16)> {
+fn note_field(frame: &Frame, area: Rect, buf: &mut Buffer) -> Option<(u16, u16)> {
     if area.height == 0 {
         return None;
     }
-    let enabled = model.note_target_key().is_some();
+    let enabled = frame.note_target_key().is_some();
     let ink = if enabled { push::RING } else { push::HAIRLINE };
     let field_area = Rect { height: 1, ..area };
     let block = push::field(ink);
     let inner = block.inner(field_area);
     block.render(field_area, buf);
-    let draft = &model.draft_note_text;
+    let draft = &frame.draft;
     let line = if draft.is_empty() {
         Line::from(push::quiet("add a note…"))
     } else {
@@ -766,14 +765,14 @@ const ALL_NOTE_COLUMNS: [Column; 4] = [
 /// chord's headline as the engine names it today; the subhead is the stored
 /// key.
 fn all_notes(
-    model: &AppModel,
+    frame: &Frame,
     ui: &UiState,
     density: Density,
     mut cursor: Cursor,
     buf: &mut Buffer,
     hits: &mut Hits,
 ) {
-    let groups = model.note_groups();
+    let groups = &frame.groups;
     if groups.is_empty() {
         let area = cursor.take(1);
         Paragraph::new(Line::from(vec![
@@ -787,7 +786,7 @@ fn all_notes(
     push::section_head(
         "§",
         "Every note",
-        &format!("{} · {} chords", model.total_note_count(), groups.len()),
+        &format!("{} · {} chords", frame.notes_total, groups.len()),
         density.section_rule(),
         head,
         buf,
@@ -860,23 +859,20 @@ fn all_notes(
 }
 
 /// How many notes the keys can select on `screen`.
-pub fn selectable_count(model: &AppModel, screen: Screen) -> usize {
+pub fn selectable_count(frame: &Frame, screen: Screen) -> usize {
     match screen {
-        Screen::NowPlaying => model.notes_for_displayed_chord().len(),
-        Screen::AllNotes => model.total_note_count(),
+        Screen::NowPlaying => frame.notes.len(),
+        Screen::AllNotes => frame.notes_total,
     }
 }
 
 /// The id of the note the keys have selected on `screen`, if any.
-pub fn selected_note_id(model: &AppModel, ui: &UiState, screen: Screen) -> Option<String> {
+pub fn selected_note_id(frame: &Frame, ui: &UiState, screen: Screen) -> Option<String> {
     let index = ui.selected(screen)?;
     match screen {
-        Screen::NowPlaying => model
-            .notes_for_displayed_chord()
-            .get(index)
-            .map(|n| n.id.clone()),
-        Screen::AllNotes => model
-            .note_groups()
+        Screen::NowPlaying => frame.notes.get(index).map(|n| n.id.clone()),
+        Screen::AllNotes => frame
+            .groups
             .iter()
             .flat_map(|g| g.notes.iter())
             .nth(index)

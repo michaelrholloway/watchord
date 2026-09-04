@@ -1,15 +1,18 @@
-//! `--print`: the model, headless, as plain lines.
+//! `--print` and `--json`: the model, headless.
 //!
-//! Prints everything the Now Playing screen would draw, one fact per line, and
-//! prints it again whenever the display changes. A fake's script is finite, so
-//! a fake run prints once it has been consumed and exits; a live run streams
-//! until Ctrl-C.
+//! Both print the same [`Frame`] the skins draw. `--print` writes every field
+//! as a labelled plain line, absent optional fields as `label: —`, so a script
+//! sees the same labels every time. `--json` writes the frame as one JSON line
+//! per settled sounding set — pipe mode — for other programs.
+//!
+//! A fake's script is finite, so a fake run prints once it has been consumed
+//! and exits; a live run streams until Ctrl-C.
 
 use std::io::{self, Write};
 use std::process::ExitCode;
 use std::time::Duration;
 
-use watchord_model::AppModel;
+use watchord_model::{AppModel, Frame};
 
 use crate::composition::GraphKinds;
 
@@ -19,14 +22,30 @@ const TICK: Duration = Duration::from_millis(50);
 /// Quiet ticks after a fake's last event before its output is final.
 const QUIET_TICKS_BEFORE_DONE: u32 = 4;
 
-pub fn run(mut model: AppModel, kinds: &GraphKinds, is_fake: bool) -> ExitCode {
+/// The value printed for an absent optional field.
+const ABSENT: &str = "—";
+
+/// How the frame goes to stdout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Output {
+    /// Labelled plain lines, reprinted whenever the display changes.
+    Lines,
+    /// One JSON line per settled sounding set.
+    Json,
+}
+
+pub fn run(mut model: AppModel, kinds: &GraphKinds, is_fake: bool, output: Output) -> ExitCode {
     model.start();
-    println!(
+    let graph = format!(
         "graph: naming={} source={} store={}",
         kinds.naming, kinds.source, kinds.store
     );
+    match output {
+        // The pipe is JSON lines only; the graph note goes beside it.
+        Output::Json => eprintln!("{graph}"),
+        Output::Lines => println!("{graph}"),
+    }
     let mut out = io::stdout().lock();
-    let mut last = String::new();
 
     if is_fake {
         // Drain the whole script. A scripted source pushes it all inside
@@ -42,87 +61,153 @@ pub fn run(mut model: AppModel, kinds: &GraphKinds, is_fake: bool) -> ExitCode {
                 quiet_ticks += 1;
             }
         }
-        let _ = out.write_all(render(&model).as_bytes());
+        let _ = out.write_all(format_frame(&model.frame(), output).as_bytes());
         model.stop();
         return ExitCode::SUCCESS;
     }
 
-    let _ = out.write_all(render(&model).as_bytes());
-    loop {
-        model.wait(Duration::from_secs(1));
-        let now = render(&model);
-        if now != last {
-            let _ = out.write_all(b"\n");
-            let _ = out.write_all(now.as_bytes());
-            let _ = out.flush();
-            last = now;
+    match output {
+        Output::Lines => {
+            let mut last = render(&model.frame());
+            let _ = out.write_all(last.as_bytes());
+            loop {
+                model.wait(Duration::from_secs(1));
+                let now = render(&model.frame());
+                if now != last {
+                    let _ = out.write_all(b"\n");
+                    let _ = out.write_all(now.as_bytes());
+                    let _ = out.flush();
+                    last = now;
+                }
+            }
+        }
+        Output::Json => {
+            // One line per settled sounding set: a line goes out when the
+            // sounding set or the held/released state moves, never for a
+            // keystroke or a note.
+            let mut last = model.frame();
+            loop {
+                model.wait(Duration::from_secs(1));
+                let now = model.frame();
+                if now.sounding != last.sounding || now.state != last.state {
+                    let _ = out.write_all(json_line(&now).as_bytes());
+                    let _ = out.flush();
+                    last = now;
+                }
+            }
         }
     }
 }
 
-/// Every fact on the screen, as `label: value` lines.
-pub fn render(model: &AppModel) -> String {
+fn format_frame(frame: &Frame, output: Output) -> String {
+    match output {
+        Output::Lines => render(frame),
+        Output::Json => json_line(frame),
+    }
+}
+
+/// The frame as one JSON line, newline-terminated.
+pub fn json_line(frame: &Frame) -> String {
+    // A `Frame` is plain data with no map keys that can fail to serialise.
+    let mut line = serde_json::to_string(frame).expect("a Frame serialises");
+    line.push('\n');
+    line
+}
+
+fn or_absent(value: Option<&str>) -> &str {
+    match value {
+        Some(text) if !text.is_empty() => text,
+        _ => ABSENT,
+    }
+}
+
+/// Every field of the frame, as `label: value` lines.
+pub fn render(frame: &Frame) -> String {
     let mut lines = Vec::new();
-    if let Some(banner) = model.banner() {
-        lines.push(format!("banner: {banner}"));
-    }
-    if let Some(status) = model.status_message() {
-        lines.push(format!("status: {status}"));
-    }
-    lines.push(format!("input: {}", model.input_label()));
-    lines.push(format!("screen: {}", model.screen.title()));
-    lines.push(format!("headline: {}", model.headline_text()));
-    if let Some(approximation) = model.headline_approximation() {
-        lines.push(format!("approximation: {approximation}"));
-    }
-    if let Some(spoken) = model.headline_spoken() {
-        lines.push(format!("spoken: {spoken}"));
-    }
-    if let Some(fit) = model.headline_fit_note() {
-        lines.push(format!("fit: {fit}"));
-    }
-    if let Some(reason) = model.decline_reason() {
-        lines.push(format!("declined: {reason}"));
-    }
+    lines.push(format!("banner: {}", or_absent(frame.banner.as_deref())));
+    lines.push(format!("status: {}", or_absent(frame.status.as_deref())));
+    lines.push(format!("input: {}", frame.input));
     lines.push(format!(
-        "state: {}",
-        if model.is_released() {
-            "released"
+        "inputs: {}",
+        if frame.inputs.is_empty() {
+            ABSENT.to_string()
         } else {
-            "held"
+            frame.inputs.join(", ")
         }
     ));
-    let keys = model.keys_row();
-    if !keys.is_empty() {
-        lines.push(format!("keys: {keys}"));
+    lines.push(format!("screen: {}", frame.screen.title()));
+    lines.push(format!("state: {}", frame.state.label()));
+    lines.push(format!("headline: {}", frame.headline_text));
+    lines.push(format!(
+        "approximation: {}",
+        or_absent(frame.headline_approximation())
+    ));
+    lines.push(format!("spoken: {}", or_absent(frame.headline_spoken())));
+    lines.push(format!("fit: {}", or_absent(frame.headline_fit_note())));
+    lines.push(format!(
+        "declined: {}",
+        or_absent(frame.declined.as_deref())
+    ));
+    lines.push(format!("keys: {}", or_absent(Some(frame.keys.as_str()))));
+    lines.push(format!("key: {}", or_absent(Some(frame.key.raw()))));
+    lines.push(format!(
+        "sounding: {}",
+        or_absent(Some(frame.sounding_row().as_str()))
+    ));
+    for (index, reading) in frame.readings().iter().enumerate() {
+        let label = if index == 0 { "reading" } else { "alternate" };
+        let mark = reading
+            .approximation
+            .as_deref()
+            .map(|m| format!(" {m}"))
+            .unwrap_or_default();
+        let detail = reading
+            .fit_detail
+            .as_deref()
+            .map(|d| format!(" {d}"))
+            .unwrap_or_default();
+        lines.push(format!(
+            "{label}: {}{mark} · rank {} · origin {} · fit {}{detail} · score {} · root {} · claimed {} · spoken {}",
+            reading.name,
+            index + 1,
+            reading.origin.raw_value(),
+            reading.fit_name(),
+            reading.score,
+            reading.root_name(),
+            reading.claimed_row(),
+            reading.spoken,
+        ));
     }
-    for alternate in model.alternates() {
-        let mark = alternate.approximation.as_deref().unwrap_or("");
-        let detail = alternate.fit_detail.as_deref().unwrap_or("");
-        lines.push(
-            format!(
-                "alternate: {}{} [{}] {} {}",
-                alternate.name,
-                if mark.is_empty() {
-                    String::new()
-                } else {
-                    format!(" {mark}")
-                },
-                alternate.origin.raw_value(),
-                alternate.spoken,
-                detail
-            )
-            .trim_end()
-            .to_string(),
-        );
-    }
-    for note in model.notes_for_displayed_chord() {
+    lines.push(format!(
+        "annotations: {}",
+        if frame.annotations.is_empty() {
+            "none yet"
+        } else {
+            ""
+        }
+    ));
+    for note in &frame.notes {
         lines.push(format!(
             "note: {} (written as {})",
             note.text, note.spelling_when_written
         ));
     }
-    lines.push(format!("notes total: {}", model.total_note_count()));
+    lines.push(format!("notes total: {}", frame.notes_total));
+    lines.push(format!("draft: {}", or_absent(Some(frame.draft.as_str()))));
+    for group in &frame.groups {
+        lines.push(format!(
+            "group: {} · key {} · notes {}",
+            group.heading,
+            group.key.raw(),
+            group.notes.len()
+        ));
+        for note in &group.notes {
+            lines.push(format!(
+                "group note: {} (written as {})",
+                note.text, note.spelling_when_written
+            ));
+        }
+    }
     lines.push(String::new());
     lines.join("\n")
 }

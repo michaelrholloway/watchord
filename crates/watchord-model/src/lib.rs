@@ -12,19 +12,24 @@
 //! on its tick, or `wait` when it has nothing else to do.
 
 pub mod fakes;
+pub mod frame;
+
+pub use frame::{Annotations, Frame, FrameReading, FrameState};
 
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use serde::{Deserialize, Serialize};
 use watchord_core::{
     ChordAnalysis, ChordKey, ChordNaming, ChordNote, DeclineReason, NoteName, NoteStoring,
     ReadingDisplay, SoundingSet, SoundingSetSource,
 };
 
 /// Which screen is showing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Screen {
     /// The live chord, its alternates, its notes, and the note field.
     NowPlaying,
@@ -54,7 +59,8 @@ impl Screen {
 }
 
 /// A chord's notes on the All Notes screen.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NoteGroup {
     /// The identity the notes are stored against.
     pub key: ChordKey,
@@ -480,6 +486,67 @@ impl AppModel {
     /// draft that is not blank.
     pub fn can_commit_note(&self) -> bool {
         self.note_target_key().is_some() && !self.draft_note_text.trim().is_empty()
+    }
+
+    // MARK: - The frame
+
+    /// Everything on screen, as one value. Both skins draw from it, `--print`
+    /// prints it, and `--json` streams it, so none of them can disagree.
+    pub fn frame(&self) -> Frame {
+        let bass = self
+            .displayed
+            .as_ref()
+            .and_then(|d| d.sounding.bass_pitch_class());
+        let headline = self
+            .displayed
+            .as_ref()
+            .and_then(|d| d.headline.as_ref())
+            .map(|reading| FrameReading::new(reading, bass));
+        let alternates = self
+            .displayed
+            .as_ref()
+            .map(|d| {
+                d.alternates
+                    .iter()
+                    .map(|reading| FrameReading::new(reading, bass))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let state = if self.displayed.is_none() {
+            FrameState::Idle
+        } else if self.is_released {
+            FrameState::Released
+        } else {
+            FrameState::Held
+        };
+        Frame {
+            screen: self.screen,
+            banner: self.banner.clone(),
+            status: self.status_message.clone(),
+            input: self.input_label(),
+            inputs: self.connected_inputs.clone(),
+            state,
+            headline_text: self.headline_text(),
+            headline,
+            declined: self.decline_reason(),
+            keys: self.keys_row(),
+            key: self
+                .displayed
+                .as_ref()
+                .map(|d| d.key.clone())
+                .unwrap_or_default(),
+            sounding: self
+                .displayed
+                .as_ref()
+                .map(|d| d.sounding.clone())
+                .unwrap_or_default(),
+            alternates,
+            annotations: Annotations::default(),
+            notes: self.notes_for_displayed_chord.clone(),
+            groups: self.note_groups.clone(),
+            notes_total: self.total_note_count(),
+            draft: self.draft_note_text.clone(),
+        }
     }
 
     // MARK: - Notes

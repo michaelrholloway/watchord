@@ -24,6 +24,7 @@ use ratatui::backend::CrosstermBackend;
 use watchord_model::{AppModel, Screen};
 
 use crate::screens::{self, Hits, ScrollTarget, UiState};
+use crate::{Skin, plain};
 
 /// One tick of the loop: how long a key wait blocks before the model is polled.
 const TICK: Duration = Duration::from_millis(50);
@@ -172,7 +173,7 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
         Action::NextScreen => model.screen = next_screen(screen, 1),
         Action::PreviousScreen => model.screen = next_screen(screen, -1),
         Action::SelectUp | Action::SelectDown => {
-            let count = screens::selectable_count(model, screen);
+            let count = screens::selectable_count(&model.frame(), screen);
             if count == 0 {
                 ui.set_selected(screen, None);
             } else {
@@ -188,9 +189,9 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
         }
         Action::ClearSelection => ui.set_selected(screen, None),
         Action::DeleteSelected => {
-            if let Some(id) = screens::selected_note_id(model, ui, screen) {
+            if let Some(id) = screens::selected_note_id(&model.frame(), ui, screen) {
                 model.delete_note(&id);
-                let count = screens::selectable_count(model, screen);
+                let count = screens::selectable_count(&model.frame(), screen);
                 let kept = ui
                     .selected(screen)
                     .filter(|_| count > 0)
@@ -208,8 +209,17 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
     true
 }
 
-/// Runs the skin until `q` or Ctrl-C. Starts and stops the model.
-pub fn run(mut model: AppModel) -> io::Result<()> {
+/// Draws one frame of `skin`. Returns what the mouse can hit in it.
+fn draw(target: &mut ratatui::Frame, skin: Skin, model: &AppModel, ui: &UiState) -> Hits {
+    let frame = model.frame();
+    match skin {
+        Skin::Push => screens::draw(target, &frame, ui),
+        Skin::Plain => plain::draw(target, &frame, ui),
+    }
+}
+
+/// Runs `skin` until `q` or Ctrl-C. Starts and stops the model.
+pub fn run(mut model: AppModel, skin: Skin) -> io::Result<()> {
     let previous_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         restore();
@@ -226,7 +236,7 @@ pub fn run(mut model: AppModel) -> io::Result<()> {
     model.start();
     let mut frames: u64 = 0;
     loop {
-        terminal.draw(|frame| hits = screens::draw(frame, &model, &ui))?;
+        terminal.draw(|target| hits = draw(target, skin, &model, &ui))?;
         frames += 1;
         if panic_test && frames > 2 {
             panic!("{PANIC_TEST_VAR} is set: proving the terminal restores");
@@ -325,7 +335,7 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(120, 40)).expect("a test terminal");
         let mut hits = Hits::default();
         terminal
-            .draw(|frame| hits = screens::draw(frame, model, ui))
+            .draw(|target| hits = screens::draw(target, &model.frame(), ui))
             .expect("a frame");
         hits
     }
