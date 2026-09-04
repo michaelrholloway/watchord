@@ -1,5 +1,5 @@
  WATCHORD   NOTES TOTAL 3   NOTES 2
- INPUT fake   STATE held   INPUTS —
+ INPUT fake   STATE held   INPUTS —   FILTER —
  BANNER         fake input — no MIDI hardware is being read
  STATUS         —
  SCREEN         [Now Playing]    All Notes

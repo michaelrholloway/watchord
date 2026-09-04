@@ -506,7 +506,8 @@ fn pedal_settle_and_arpeggio_plates_follow_the_frame() {
 }
 
 #[test]
-fn the_input_picker_lists_inputs_and_marks_the_highlighted_row_when_open() {
+fn the_input_picker_lists_all_inputs_first_then_every_device_and_marks_the_highlighted_row_when_open()
+ {
     let model = fake_model(false, Screen::NowPlaying);
     let mut frame = model.frame();
     frame.inputs = vec!["Nord Stage 3".to_string(), "IAC Driver Bus 1".to_string()];
@@ -519,18 +520,43 @@ fn the_input_picker_lists_inputs_and_marks_the_highlighted_row_when_open() {
         "{text}"
     );
     assert!(
-        !text.contains("> Nord Stage 3") && !text.contains("> IAC Driver Bus 1"),
+        !text.contains("> All inputs")
+            && !text.contains("> Nord Stage 3")
+            && !text.contains("> IAC Driver Bus 1"),
         "nothing highlighted while closed:\n{text}"
     );
 
-    let open = UiState {
+    // Row 0, the default highlight, is `All inputs` — not a device (ticket
+    // #18: opening the picker must never default onto a row that narrows
+    // the filter).
+    let opened_on_default = UiState {
         input_picker_open: true,
-        input_picker_index: 1,
         ..Default::default()
     };
-    let (rows, _) = render(&frame, &open, WIDTH, 44);
+    let (rows, _) = render(&frame, &opened_on_default, WIDTH, 44);
+    let text = text_of(&rows);
+    assert!(text.contains("All inputs"), "{text}");
+    let marked: Vec<&String> = rows
+        .iter()
+        .filter(|r| r.trim_start().starts_with("> "))
+        .collect();
+    assert_eq!(marked.len(), 1, "{}", text_of(&rows));
+    assert!(
+        marked[0].contains("All inputs"),
+        "the default highlight is All inputs, not a device:\n{}",
+        text_of(&rows)
+    );
+
+    // 0 = All inputs, 1 = Nord Stage 3, 2 = IAC Driver Bus 1.
+    let open_on_second_device = UiState {
+        input_picker_open: true,
+        input_picker_index: 2,
+        ..Default::default()
+    };
+    let (rows, _) = render(&frame, &open_on_second_device, WIDTH, 44);
     let text = text_of(&rows);
     assert!(text.contains("PICKER   OPEN"), "{text}");
+    assert!(text.contains("All inputs"), "{text}");
     assert!(text.contains("Nord Stage 3"), "{text}");
     assert!(text.contains("IAC Driver Bus 1"), "{text}");
     let marked: Vec<&String> = rows
@@ -543,6 +569,25 @@ fn the_input_picker_lists_inputs_and_marks_the_highlighted_row_when_open() {
         "the highlighted row is the picker's second device:\n{}",
         text_of(&rows)
     );
+}
+
+#[test]
+fn the_running_head_shows_filter_when_a_device_is_selected() {
+    let model = fake_model(false, Screen::NowPlaying);
+    let mut frame = model.frame();
+    frame.inputs = vec!["Nord Stage 3".to_string(), "IAC Driver Bus 1".to_string()];
+
+    let (rows, _) = render(&frame, &UiState::default(), WIDTH, 44);
+    let text = text_of(&rows);
+    assert!(
+        text.contains("FILTER —"),
+        "no filter set draws the label with a dash:\n{text}"
+    );
+
+    frame.input_filter = Some("Nord Stage 3".to_string());
+    let (rows, _) = render(&frame, &UiState::default(), WIDTH, 44);
+    let text = text_of(&rows);
+    assert!(text.contains("FILTER Nord Stage 3"), "{text}");
 }
 
 #[test]

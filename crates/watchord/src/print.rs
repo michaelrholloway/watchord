@@ -229,6 +229,10 @@ pub fn render(frame: &Frame) -> String {
             frame.inputs.join(", ")
         }
     ));
+    lines.push(format!(
+        "filter: {}",
+        or_absent(frame.input_filter.as_deref())
+    ));
     lines.push(format!("screen: {}", frame.screen.title()));
     lines.push(format!("state: {}", frame.state.label()));
     lines.push(format!("sustain: {}", pedal_word(frame.sustain)));

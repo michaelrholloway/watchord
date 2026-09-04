@@ -360,13 +360,17 @@ pub struct Frame {
     /// with two keys, or from the headline while the soft pedal is held.
     /// `None` until set. Session only; never saved (ticket #16).
     pub key_context: Option<Key>,
+    /// The picker's live restriction: the one device name the source is
+    /// listening to, or `None` while every input connects. The picker's
+    /// `All inputs` row (index 0) clears it (ticket #18).
+    pub input_filter: Option<String>,
 }
 
 impl Frame {
     /// Every label a renderer must emit, lowercase. A skin writes them in
     /// UPPERCASE, `--print` writes them as they are. A test greps each plain
     /// snapshot and the print output for each one.
-    pub const LABELS: [&'static str; 55] = [
+    pub const LABELS: [&'static str; 56] = [
         "screen",
         "banner",
         "status",
@@ -422,10 +426,11 @@ impl Frame {
         "numeral",
         "nashville",
         "function",
+        "filter",
     ];
 
     /// The labels the Now Playing screen carries: everything but the groups.
-    pub const NOW_PLAYING_LABELS: [&'static str; 50] = [
+    pub const NOW_PLAYING_LABELS: [&'static str; 51] = [
         "screen",
         "banner",
         "status",
@@ -476,10 +481,11 @@ impl Frame {
         "numeral",
         "nashville",
         "function",
+        "filter",
     ];
 
     /// The labels the All Notes screen carries: the head block and the groups.
-    pub const ALL_NOTES_LABELS: [&'static str; 27] = [
+    pub const ALL_NOTES_LABELS: [&'static str; 28] = [
         "screen",
         "banner",
         "status",
@@ -507,6 +513,7 @@ impl Frame {
         "settle",
         "arpeggio",
         "key context",
+        "filter",
     ];
 
     /// True when the keys are up and the display is holding the last chord.

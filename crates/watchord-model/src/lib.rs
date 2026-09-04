@@ -191,6 +191,12 @@ pub struct AppModel {
     /// is plugged in — a normal state the screen has to be able to say.
     connected_inputs: Vec<String>,
 
+    /// The picker's live restriction: the one device name the source will
+    /// listen to, or `None` to listen to everything. Set by
+    /// [`AppModel::select_input`]; the picker's `All inputs` row clears it
+    /// (ticket #18).
+    active_input_filter: Option<String>,
+
     /// The sustain pedal, as the source last reported it.
     sustain: bool,
     /// The sostenuto pedal, as the source last reported it.
@@ -284,6 +290,7 @@ impl AppModel {
             status_message: None,
             banner: None,
             connected_inputs: Vec::new(),
+            active_input_filter: None,
             sustain: false,
             sostenuto: false,
             soft: false,
@@ -815,8 +822,9 @@ impl AppModel {
 
     /// Restricts the source to one named input, or clears the restriction to
     /// listen to everything. Live — no restart. The picker calls this with a
-    /// name off `connected_inputs`.
+    /// name off `connected_inputs`, or `None` for its `All inputs` row.
     pub fn select_input(&mut self, name: Option<String>) {
+        self.active_input_filter = name.clone();
         self.source.select_input(name);
     }
 
@@ -1159,6 +1167,7 @@ impl AppModel {
             settle_ms: self.settle_ms(),
             arpeggio: self.arpeggio,
             key_context: self.key_context,
+            input_filter: self.active_input_filter.clone(),
         }
     }
 

@@ -245,10 +245,11 @@ fn head(frame: &Frame, page: &mut Page, hits: &mut Hits) {
         frame.inputs.join(", ")
     };
     page.text(&format!(
-        "INPUT {}   STATE {}   INPUTS {}",
+        "INPUT {}   STATE {}   INPUTS {}   FILTER {}",
         frame.input,
         frame.state.label(),
-        inputs
+        inputs,
+        or_absent(frame.input_filter.as_deref()),
     ));
     page.line("banner", or_absent(frame.banner.as_deref()));
     page.line("status", or_absent(frame.status.as_deref()));
@@ -307,23 +308,30 @@ fn key_context_word(frame: &Frame) -> String {
 /// The input picker: `i` opens it, ↑↓ highlight, enter chooses, esc closes.
 /// The device names themselves are always on screen in the running head
 /// (`INPUTS`); this is only the chooser.
+///
+/// Row 0 is always `All inputs` — the picker's own escape hatch back to no
+/// restriction — so opening it and pressing enter on the row it defaults to
+/// can never narrow the filter to a single device with no way back (ticket
+/// #18). The device rows start at index 1, one past `All inputs`.
 fn input_picker(frame: &Frame, ui: &UiState, page: &mut Page) {
     if !ui.input_picker_open {
         page.text("PICKER   press i to choose an input");
         return;
     }
     page.text("PICKER   OPEN — up/down choose, enter select, esc close");
-    if frame.inputs.is_empty() {
-        page.text(&format!("{UNSELECTED}none"));
+    let all_mark = if ui.input_picker_index == 0 {
+        SELECTED
     } else {
-        for (index, name) in frame.inputs.iter().enumerate() {
-            let mark = if index == ui.input_picker_index {
-                SELECTED
-            } else {
-                UNSELECTED
-            };
-            page.text(&format!("{mark}{name}"));
-        }
+        UNSELECTED
+    };
+    page.text(&format!("{all_mark}All inputs"));
+    for (index, name) in frame.inputs.iter().enumerate() {
+        let mark = if index + 1 == ui.input_picker_index {
+            SELECTED
+        } else {
+            UNSELECTED
+        };
+        page.text(&format!("{mark}{name}"));
     }
     page.skip();
 }

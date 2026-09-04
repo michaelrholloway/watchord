@@ -1,5 +1,5 @@
  WATCHORD   NOTES TOTAL 0
- INPUT fake   STATE held   INPUTS —
+ INPUT fake   STATE held   INPUTS —   FILTER —
  BANNER         fake input — fit tiers are stubbed, no MIDI hardware is being read
  STATUS         —
  SCREEN         [Now Playing]    All Notes

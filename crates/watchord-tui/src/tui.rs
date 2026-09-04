@@ -313,19 +313,25 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
             ui.input_picker_index = 0;
         }
         Action::PickerUp => {
-            let count = model.connected_inputs().len();
-            if count > 0 {
-                ui.input_picker_index = (ui.input_picker_index + count - 1) % count;
-            }
+            // +1 for the `All inputs` row at index 0, ahead of every device.
+            let count = model.connected_inputs().len() + 1;
+            ui.input_picker_index = (ui.input_picker_index + count - 1) % count;
         }
         Action::PickerDown => {
-            let count = model.connected_inputs().len();
-            if count > 0 {
-                ui.input_picker_index = (ui.input_picker_index + 1) % count;
-            }
+            let count = model.connected_inputs().len() + 1;
+            ui.input_picker_index = (ui.input_picker_index + 1) % count;
         }
         Action::PickerSelect => {
-            if let Some(name) = model.connected_inputs().get(ui.input_picker_index).cloned() {
+            // Index 0 is `All inputs`: clears the restriction rather than
+            // narrowing to whatever is highlighted by default (ticket #18).
+            // Device rows are 1-based from there.
+            if ui.input_picker_index == 0 {
+                model.select_input(None);
+            } else if let Some(name) = model
+                .connected_inputs()
+                .get(ui.input_picker_index - 1)
+                .cloned()
+            {
                 model.select_input(Some(name));
             }
             ui.input_picker_open = false;
@@ -910,14 +916,17 @@ mod tests {
     }
 
     #[test]
-    fn toggling_the_picker_opens_it_on_the_first_input_and_closes_it_again() {
+    fn toggling_the_picker_opens_on_all_inputs_and_closes_it_again() {
+        // Row 0 is `All inputs`, not the first device — opening the picker
+        // must never default onto a row that narrows the filter (ticket
+        // #18).
         let mut model = model_with_notes();
         let mut ui = UiState::default();
         assert!(!ui.input_picker_open);
 
         apply(Action::ToggleInputPicker, &mut model, &mut ui);
         assert!(ui.input_picker_open);
-        assert_eq!(ui.input_picker_index, 0);
+        assert_eq!(ui.input_picker_index, 0, "defaults to All inputs");
 
         apply(Action::ToggleInputPicker, &mut model, &mut ui);
         assert!(!ui.input_picker_open);
@@ -942,29 +951,103 @@ mod tests {
         (model, source)
     }
 
+    /// An idle model with three connected inputs, named after Michael's real
+    /// rig from the ticket #18 bug report ("i now only see my 1 iac driver,
+    /// i cant see the p series or the scarlett anymore and cant get them
+    /// back"), plus a handle onto the same scripted source so a test can
+    /// read back what reached it.
+    fn model_with_three_inputs() -> (AppModel, ScriptedSoundingSetSource) {
+        let store = InMemoryNoteStore::default();
+        let source = ScriptedSoundingSetSource::default();
+        source.attach(&["IAC Driver Bus 1", "P-125", "Scarlett 18i8"]);
+        let mut model = AppModel::new(
+            Arc::new(StubChordNaming::new()),
+            Box::new(source.clone()),
+            Arc::new(store),
+        );
+        model.start();
+        while model.connected_inputs().len() < 3 {
+            model.wait(Duration::from_millis(50));
+        }
+        (model, source)
+    }
+
     #[test]
-    fn picker_up_and_down_wrap_around_the_connected_inputs() {
+    fn closing_the_picker_without_choosing_never_calls_select_input() {
+        // Reproduces Michael's report by ruling out two of the three ways he
+        // might have closed the picker. Esc and `i` again both mean "close
+        // without choosing" and must never reach the source.
+        let (mut model, source) = model_with_three_inputs();
+
+        let mut ui = UiState::default();
+        apply(Action::ToggleInputPicker, &mut model, &mut ui);
+        apply(Action::PickerClose, &mut model, &mut ui);
+        assert!(
+            source.selected_inputs().is_empty(),
+            "esc must not call select_input"
+        );
+
+        let mut ui = UiState::default();
+        apply(Action::ToggleInputPicker, &mut model, &mut ui);
+        apply(Action::ToggleInputPicker, &mut model, &mut ui);
+        assert!(!ui.input_picker_open);
+        assert!(
+            source.selected_inputs().is_empty(),
+            "toggling the picker closed with `i` again must not call select_input"
+        );
+    }
+
+    #[test]
+    fn enter_on_the_pickers_default_row_clears_the_filter_not_narrows_it() {
+        // The third and real culprit: pressing enter on the row the picker
+        // opens highlighting. Before this fix that row was the first
+        // connected device (here, `IAC Driver Bus 1`) — enter narrowed the
+        // filter to it with no `All inputs` row to undo it, which is exactly
+        // what left Michael seeing only his IAC driver with the P-Series and
+        // the Scarlett gone and no way back. Root cause: `PickerSelect` at
+        // the default index 0 must clear the filter, not narrow it.
+        let (mut model, source) = model_with_three_inputs();
+        let mut ui = UiState::default();
+        apply(Action::ToggleInputPicker, &mut model, &mut ui);
+        assert_eq!(ui.input_picker_index, 0, "opens highlighting row 0");
+
+        apply(Action::PickerSelect, &mut model, &mut ui);
+        assert!(!ui.input_picker_open, "selecting closes the picker");
+        assert_eq!(
+            source.last_selected_input(),
+            Some(None),
+            "row 0 is All inputs — selecting it must clear the restriction, \
+             not narrow to whichever device happens to be first"
+        );
+    }
+
+    #[test]
+    fn picker_up_and_down_wrap_around_all_inputs_plus_every_device() {
         let (mut model, _source) = model_with_two_inputs();
         let mut ui = UiState::default();
-        assert_eq!(ui.input_picker_index, 0);
+        assert_eq!(ui.input_picker_index, 0, "starts on All inputs");
 
         apply(Action::PickerUp, &mut model, &mut ui);
-        assert_eq!(ui.input_picker_index, 1, "up from 0 wraps to the last row");
+        assert_eq!(
+            ui.input_picker_index, 2,
+            "up from All inputs wraps to the last device row"
+        );
         apply(Action::PickerDown, &mut model, &mut ui);
         assert_eq!(
             ui.input_picker_index, 0,
-            "down from the last row wraps to 0"
+            "down from the last row wraps to All inputs"
         );
         apply(Action::PickerDown, &mut model, &mut ui);
         assert_eq!(ui.input_picker_index, 1);
     }
 
     #[test]
-    fn picker_select_calls_select_input_with_the_highlighted_name_and_closes() {
+    fn picker_select_calls_select_input_with_the_highlighted_devices_name_and_closes() {
         let (mut model, source) = model_with_two_inputs();
+        // 0 = All inputs, 1 = Nord Stage 3, 2 = IAC Driver Bus 1.
         let mut ui = UiState {
             input_picker_open: true,
-            input_picker_index: 1,
+            input_picker_index: 2,
             ..Default::default()
         };
         apply(Action::PickerSelect, &mut model, &mut ui);
@@ -973,6 +1056,36 @@ mod tests {
             source.last_selected_input(),
             Some(Some("IAC Driver Bus 1".to_string())),
             "the highlighted row's name reached the source"
+        );
+    }
+
+    #[test]
+    fn choosing_all_inputs_after_a_device_was_selected_reconnects_every_input() {
+        // Ticket #18's fix, end to end: narrow to one device, reopen the
+        // picker (which always defaults back to All inputs), and confirm
+        // choosing it clears the restriction so every input connects again.
+        let (mut model, source) = model_with_two_inputs();
+        let mut ui = UiState {
+            input_picker_open: true,
+            input_picker_index: 1, // Nord Stage 3
+            ..Default::default()
+        };
+        apply(Action::PickerSelect, &mut model, &mut ui);
+        assert_eq!(
+            source.last_selected_input(),
+            Some(Some("Nord Stage 3".to_string()))
+        );
+
+        apply(Action::ToggleInputPicker, &mut model, &mut ui);
+        assert_eq!(
+            ui.input_picker_index, 0,
+            "reopening defaults back to All inputs"
+        );
+        apply(Action::PickerSelect, &mut model, &mut ui);
+        assert_eq!(
+            source.last_selected_input(),
+            Some(None),
+            "All inputs clears the restriction — every input connects again"
         );
     }
 
