@@ -12,7 +12,9 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 use std::time::Duration;
 
+use watchord_model::notes::tags_of;
 use watchord_model::{AppModel, Frame};
+use watchord_tui::when;
 
 use crate::composition::GraphKinds;
 
@@ -197,6 +199,22 @@ fn or_absent(value: Option<&str>) -> &str {
     }
 }
 
+/// A pedal plate's word: `down` or `up`.
+fn pedal_word(down: bool) -> &'static str {
+    if down { "down" } else { "up" }
+}
+
+/// A mode plate's word: `on` or `off`.
+fn mode_word(on: bool) -> &'static str {
+    if on { "on" } else { "off" }
+}
+
+/// A note's text on one labelled line: an embedded line break would otherwise
+/// read as a second, unlabelled line.
+fn single_line(text: &str) -> String {
+    text.replace('\n', " ⏎ ")
+}
+
 /// Every field of the frame, as `label: value` lines.
 pub fn render(frame: &Frame) -> String {
     let mut lines = Vec::new();
@@ -213,6 +231,11 @@ pub fn render(frame: &Frame) -> String {
     ));
     lines.push(format!("screen: {}", frame.screen.title()));
     lines.push(format!("state: {}", frame.state.label()));
+    lines.push(format!("sustain: {}", pedal_word(frame.sustain)));
+    lines.push(format!("sostenuto: {}", pedal_word(frame.sostenuto)));
+    lines.push(format!("soft: {}", pedal_word(frame.soft)));
+    lines.push(format!("settle: {} ms", frame.settle_ms));
+    lines.push(format!("arpeggio: {}", mode_word(frame.arpeggio)));
     lines.push(format!("headline: {}", frame.headline_text));
     lines.push(format!(
         "approximation: {}",
@@ -266,25 +289,78 @@ pub fn render(frame: &Frame) -> String {
     for note in &frame.notes {
         lines.push(format!(
             "note: {} (written as {})",
-            note.text, note.spelling_when_written
+            single_line(&note.text),
+            note.spelling_when_written
         ));
     }
     lines.push(format!("notes total: {}", frame.notes_total));
     lines.push(format!("draft: {}", or_absent(Some(frame.draft.as_str()))));
+    lines.push(format!(
+        "editing: {}",
+        if frame.editing { "yes" } else { ABSENT }
+    ));
+    lines.push(format!(
+        "search: {}",
+        or_absent(if frame.search.is_empty() {
+            None
+        } else {
+            Some(frame.search.as_str())
+        })
+    ));
+    lines.push(format!("sort: {}", frame.notes_sort.label()));
     for group in &frame.groups {
+        let tags = tags_of(group);
+        let tags_text = if tags.is_empty() {
+            ABSENT.to_string()
+        } else {
+            tags.iter()
+                .map(|t| format!("#{t}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
         lines.push(format!(
-            "group: {} · key {} · notes {}",
+            "group: {} · key {} · notes {} · tags {}",
             group.heading,
             group.key.raw(),
-            group.notes.len()
+            group.notes.len(),
+            tags_text,
         ));
         for note in &group.notes {
             lines.push(format!(
                 "group note: {} (written as {})",
-                note.text, note.spelling_when_written
+                single_line(&note.text),
+                note.spelling_when_written
             ));
         }
     }
+    drill_lines(&frame.drill, &mut lines);
     lines.push(String::new());
     lines.join("\n")
+}
+
+/// Drill's own lines (spec #9, ticket #14). Always emitted, even when drill
+/// is off, so `--print`'s labels never depend on whether drill has been used
+/// — the same discipline every other optional field on the frame keeps.
+fn drill_lines(drill: &watchord_model::DrillFrame, lines: &mut Vec<String>) {
+    lines.push(format!(
+        "drill: {}",
+        if drill.active { "on" } else { "off" }
+    ));
+    lines.push(format!("target: {}", or_absent(drill.target.as_deref())));
+    lines.push(format!(
+        "next target: {}",
+        or_absent(drill.next_target.as_deref())
+    ));
+    lines.push(format!("grade: {}", or_absent(drill.grade_display())));
+    lines.push(format!("drill stats: {}", drill.stats.len()));
+    for row in &drill.stats {
+        let last = row
+            .last_at
+            .map(when::format)
+            .unwrap_or_else(|| ABSENT.to_string());
+        lines.push(format!(
+            "drill stat: {} · attempts {} · exact {} · last {last}",
+            row.chord, row.attempts, row.exact
+        ));
+    }
 }

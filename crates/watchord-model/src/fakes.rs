@@ -11,12 +11,13 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use watchord_core::tuning;
 use watchord_core::{
     ChordAnalysis, ChordFit, ChordKey, ChordNaming, ChordNote, ChordReading, ChordRoot,
-    DeclineReason, NoteStoring, PitchClass, SoundingSet, SoundingSetSource, SourceError,
+    ChordVocabulary, ControlEvent, DeclineReason, DrillChordStat, DrillStoring, DrillTarget,
+    NoteStoring, PedalKind, PitchClass, SoundingSet, SoundingSetSource, SourceError,
     SpellingOrigin, StoreError,
 };
 
@@ -32,10 +33,17 @@ struct ScriptedInner {
     sounding_rx: Mutex<Option<Receiver<SoundingSet>>>,
     inputs_tx: Mutex<Option<Sender<Vec<String>>>>,
     inputs_rx: Mutex<Option<Receiver<Vec<String>>>>,
+    controls_tx: Mutex<Option<Sender<ControlEvent>>>,
+    controls_rx: Mutex<Option<Receiver<ControlEvent>>>,
     script: Vec<SoundingSet>,
     start_error: Option<String>,
     started: Mutex<bool>,
     stopped: Mutex<bool>,
+    /// Every call the model made to `select_input`, in order. `Some(None)`
+    /// means the restriction was cleared.
+    selected_inputs: Mutex<Vec<Option<String>>>,
+    /// Every call the model made to `set_settle`, in order.
+    settle_calls: Mutex<Vec<Duration>>,
 }
 
 /// A `SoundingSetSource` driven by hand.
@@ -71,16 +79,21 @@ impl ScriptedSoundingSetSource {
     fn build(script: Vec<SoundingSet>, start_error: Option<String>) -> Self {
         let (sounding_tx, sounding_rx) = mpsc::channel();
         let (inputs_tx, inputs_rx) = mpsc::channel();
+        let (controls_tx, controls_rx) = mpsc::channel();
         ScriptedSoundingSetSource {
             inner: Arc::new(ScriptedInner {
                 sounding_tx: Mutex::new(Some(sounding_tx)),
                 sounding_rx: Mutex::new(Some(sounding_rx)),
                 inputs_tx: Mutex::new(Some(inputs_tx)),
                 inputs_rx: Mutex::new(Some(inputs_rx)),
+                controls_tx: Mutex::new(Some(controls_tx)),
+                controls_rx: Mutex::new(Some(controls_rx)),
                 script,
                 start_error,
                 started: Mutex::new(false),
                 stopped: Mutex::new(false),
+                selected_inputs: Mutex::new(Vec::new()),
+                settle_calls: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -118,6 +131,30 @@ impl ScriptedSoundingSetSource {
             let _ = tx.send(names.iter().map(|s| s.to_string()).collect());
         }
     }
+
+    /// Pushes one pedal moving up or down, as the source's third stream would.
+    pub fn pedal(&self, pedal: PedalKind, down: bool) {
+        if let Some(tx) = lock(&self.inner.controls_tx).as_ref() {
+            let _ = tx.send(ControlEvent { pedal, down });
+        }
+    }
+
+    /// Every call the model made to `select_input`, in order — `Some(None)`
+    /// means the restriction was cleared. For asserting the picker actually
+    /// reached the source.
+    pub fn selected_inputs(&self) -> Vec<Option<String>> {
+        lock(&self.inner.selected_inputs).clone()
+    }
+
+    /// The most recent `select_input` call, or `None` if it was never called.
+    pub fn last_selected_input(&self) -> Option<Option<String>> {
+        lock(&self.inner.selected_inputs).last().cloned()
+    }
+
+    /// Every settle window the model asked for, in order.
+    pub fn settle_calls(&self) -> Vec<Duration> {
+        lock(&self.inner.settle_calls).clone()
+    }
 }
 
 impl SoundingSetSource for ScriptedSoundingSetSource {
@@ -129,6 +166,12 @@ impl SoundingSetSource for ScriptedSoundingSetSource {
 
     fn connected_inputs(&mut self) -> Receiver<Vec<String>> {
         lock(&self.inner.inputs_rx)
+            .take()
+            .unwrap_or_else(|| mpsc::channel().1)
+    }
+
+    fn controls(&mut self) -> Receiver<ControlEvent> {
+        lock(&self.inner.controls_rx)
             .take()
             .unwrap_or_else(|| mpsc::channel().1)
     }
@@ -146,9 +189,18 @@ impl SoundingSetSource for ScriptedSoundingSetSource {
 
     fn stop(&mut self) {
         *lock(&self.inner.stopped) = true;
-        // Dropping the senders closes both channels, so a consumer's loop ends.
+        // Dropping the senders closes every channel, so a consumer's loop ends.
         lock(&self.inner.sounding_tx).take();
         lock(&self.inner.inputs_tx).take();
+        lock(&self.inner.controls_tx).take();
+    }
+
+    fn set_settle(&mut self, settle: Duration) {
+        lock(&self.inner.settle_calls).push(settle);
+    }
+
+    fn select_input(&mut self, name: Option<String>) {
+        lock(&self.inner.selected_inputs).push(name);
     }
 }
 
@@ -242,6 +294,18 @@ impl NoteStoring for InMemoryNoteStore {
         );
         lock(&self.inner.storage).push(note.clone());
         Ok(note)
+    }
+
+    fn update(&self, id: &str, text: &str) -> Result<ChordNote, StoreError> {
+        if let Some(message) = &self.inner.failure {
+            return Err(StoreError::Io(message.clone()));
+        }
+        let mut storage = lock(&self.inner.storage);
+        let Some(existing) = storage.iter_mut().find(|n| n.id == id) else {
+            return Err(StoreError::NoSuchNote(id.to_string()));
+        };
+        existing.text = text.to_string();
+        Ok(existing.clone())
     }
 
     fn delete(&self, id: &str) -> Result<(), StoreError> {
@@ -417,6 +481,119 @@ impl StubAlternate {
         self.fit = fit;
         self.claiming = Some(claiming.to_vec());
         self
+    }
+}
+
+// MARK: - FixedVocabulary
+
+/// A `ChordVocabulary` over a hand-written list — never the real engine's
+/// catalog. Exists so a test or a demo can state "the drill draws from
+/// exactly these chords" in one line.
+#[derive(Clone, Default)]
+pub struct FixedVocabulary {
+    targets: Vec<DrillTarget>,
+}
+
+impl FixedVocabulary {
+    /// A vocabulary of exactly `targets`.
+    pub fn new(targets: Vec<DrillTarget>) -> Self {
+        FixedVocabulary { targets }
+    }
+
+    /// One target: `display` naming the pitch classes in `pitch_classes`.
+    pub fn target(display: &str, pitch_classes: &[i32]) -> DrillTarget {
+        DrillTarget {
+            key: ChordKey::new(pitch_classes.iter().map(|&v| PitchClass::new(v))),
+            display: display.to_string(),
+        }
+    }
+}
+
+impl ChordVocabulary for FixedVocabulary {
+    fn targets(&self) -> Vec<DrillTarget> {
+        self.targets.clone()
+    }
+}
+
+// MARK: - InMemoryDrillStore
+
+struct DrillInner {
+    stats: Mutex<Vec<DrillChordStat>>,
+    record_calls: Mutex<usize>,
+    failure: Option<String>,
+}
+
+/// A `DrillStoring` that keeps everything in memory. Never touches the disk.
+#[derive(Clone)]
+pub struct InMemoryDrillStore {
+    inner: Arc<DrillInner>,
+}
+
+impl Default for InMemoryDrillStore {
+    fn default() -> Self {
+        Self::new(Vec::new())
+    }
+}
+
+impl InMemoryDrillStore {
+    /// A store holding `seed`, in any order.
+    pub fn new(seed: Vec<DrillChordStat>) -> Self {
+        Self::build(seed, None)
+    }
+
+    /// A store whose every operation fails with `message`.
+    pub fn failing(message: &str) -> Self {
+        Self::build(Vec::new(), Some(message.to_string()))
+    }
+
+    fn build(seed: Vec<DrillChordStat>, failure: Option<String>) -> Self {
+        InMemoryDrillStore {
+            inner: Arc::new(DrillInner {
+                stats: Mutex::new(seed),
+                record_calls: Mutex::new(0),
+                failure,
+            }),
+        }
+    }
+
+    /// How many times `record` was reached, regardless of whether it failed.
+    pub fn record_call_count(&self) -> usize {
+        *lock(&self.inner.record_calls)
+    }
+}
+
+impl DrillStoring for InMemoryDrillStore {
+    fn stats(&self) -> Result<Vec<DrillChordStat>, StoreError> {
+        if let Some(message) = &self.inner.failure {
+            return Err(StoreError::Io(message.clone()));
+        }
+        Ok(lock(&self.inner.stats).clone())
+    }
+
+    fn record(
+        &self,
+        key: &ChordKey,
+        exact: bool,
+        at: SystemTime,
+    ) -> Result<DrillChordStat, StoreError> {
+        *lock(&self.inner.record_calls) += 1;
+        if let Some(message) = &self.inner.failure {
+            return Err(StoreError::Io(message.clone()));
+        }
+        let mut stats = lock(&self.inner.stats);
+        let row = match stats.iter_mut().find(|s| s.chord_key == *key) {
+            Some(row) => row,
+            None => {
+                stats.push(DrillChordStat::new(key.clone()));
+                stats.last_mut().expect("just pushed")
+            }
+        };
+        row.attempts += 1;
+        if exact {
+            row.exact += 1;
+        }
+        row.last_at = Some(at);
+        Ok(row.clone())
     }
 }
 

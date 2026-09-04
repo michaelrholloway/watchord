@@ -1,9 +1,11 @@
- WATCHORD   NOTES TOTAL 3
+ WATCHORD   NOTES TOTAL 3   NOTES 2
  INPUT fake   STATE held   INPUTS —
  BANNER         fake input — no MIDI hardware is being read
  STATUS         —
  SCREEN          Now Playing    [All Notes]
 
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ PICKER   press i to choose an input
  HEADLINE       C6
  APPROXIMATION  —
  SPOKEN         C major 6
@@ -14,11 +16,13 @@
  SOUNDING       60 64 67 69
 
  GROUPS 2 · NOTES TOTAL 3
- GROUP C6   KEY 0.4.7.9   NOTES 2
+ SEARCH         —
+ SORT           recent
+ GROUP C6   KEY 0.4.7.9   NOTES 2   TAGS —
    NOTE                                                                            WRITTEN AS  WHEN
    try it with the 9 on top                                                        Am7         YYYY-MM-DD HH:MM  delete
    sounds like the Rhodes on Voodoo                                                C6          YYYY-MM-DD HH:MM  delete
- GROUP F   KEY 0.5.9   NOTES 1
+ GROUP F   KEY 0.5.9   NOTES 1   TAGS —
    NOTE                                                                            WRITTEN AS  WHEN
    plain, but it lands                                                             F           YYYY-MM-DD HH:MM  delete
 
@@ -53,8 +57,4 @@
 
 
 
-
-
-
-
- TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · P DRILL · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT

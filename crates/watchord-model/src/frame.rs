@@ -9,6 +9,7 @@
 //! value. ADR-0005 records the decision.
 
 use std::collections::BTreeSet;
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use watchord_core::{
@@ -16,7 +17,7 @@ use watchord_core::{
     SpellingOrigin,
 };
 
-use crate::{NoteGroup, Screen};
+use crate::{NoteGroup, NotesSort, Screen};
 
 /// What the STATE plate reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -147,6 +148,58 @@ impl From<watchord_theory::annotate::Theory> for Annotations {
     }
 }
 
+/// Drill's own slot in the frame (spec #9, ticket #14): a mode drawn on top
+/// of Now Playing, not a screen. `#[serde(default)]` keeps a frame written
+/// before this ticket readable after it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DrillFrame {
+    /// True while drill is the active mode.
+    pub active: bool,
+    /// The current target's name, or `None` when drill is off.
+    pub target: Option<String>,
+    /// The name of the target after this one — shown so the hand can
+    /// prepare before the current one is graded.
+    pub next_target: Option<String>,
+    /// The last attempt's fit tier — `exact`, `missing`, `plus`, `nearest` —
+    /// or `None` before anything has been played this session.
+    pub grade: Option<String>,
+    /// What the last attempt missed or added, named. `None` for an exact
+    /// grade, or before anything has been played.
+    pub grade_note: Option<String>,
+    /// Every chord with drill history: attempts, exact count, last tried.
+    pub stats: Vec<DrillStatRow>,
+}
+
+impl DrillFrame {
+    /// The last grade as one line, or `None` before anything has been
+    /// played. `exact` alone; otherwise just `grade_note`, which already
+    /// says what happened (`missing G`, `extra B`) — the tier word is not
+    /// repeated in front of it.
+    pub fn grade_display(&self) -> Option<&str> {
+        let tier = self.grade.as_deref()?;
+        if tier == "exact" {
+            Some(tier)
+        } else {
+            self.grade_note.as_deref().or(Some(tier))
+        }
+    }
+}
+
+/// One row of the drill stats view.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DrillStatRow {
+    /// The chord's name, as the engine writes it.
+    pub chord: String,
+    /// Times this chord has been the target and graded.
+    pub attempts: u32,
+    /// How many of those attempts graded exact.
+    pub exact: u32,
+    /// When it was last attempted.
+    pub last_at: Option<SystemTime>,
+}
+
 /// Everything the screen shows, as one plain value.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -192,13 +245,39 @@ pub struct Frame {
     pub notes_total: usize,
     /// The text in the note field.
     pub draft: String,
+    /// The search query on All Notes, applied to `groups` live as typed.
+    /// Spec #9 (ticket #15).
+    pub search: String,
+    /// Which of the three orders `groups` is sorted by.
+    pub notes_sort: NotesSort,
+    /// True when the note field is editing an existing note rather than
+    /// drafting a new one.
+    pub editing: bool,
+    /// Drill's own state: target, next target, last grade, stats (spec #9,
+    /// ticket #14). A mode drawn on Now Playing, not a separate screen.
+    #[serde(default)]
+    pub drill: DrillFrame,
+    /// The sustain pedal (CC64), as the source last reported it.
+    pub sustain: bool,
+    /// The sostenuto pedal (CC66), as the source last reported it. Toggles
+    /// `arpeggio` on its down edge.
+    pub sostenuto: bool,
+    /// The soft pedal (CC67), as the source last reported it.
+    pub soft: bool,
+    /// The settle window, in milliseconds. Two keys adjust it, 10 ms at a
+    /// time, from 10 to 500.
+    pub settle_ms: u64,
+    /// True while arpeggio mode is on: a note-on adds to the sounding set and
+    /// a note-off does not remove it, until the sustain pedal lifts or the
+    /// keys go fully up.
+    pub arpeggio: bool,
 }
 
 impl Frame {
     /// Every label a renderer must emit, lowercase. A skin writes them in
     /// UPPERCASE, `--print` writes them as they are. A test greps each plain
     /// snapshot and the print output for each one.
-    pub const LABELS: [&'static str; 35] = [
+    pub const LABELS: [&'static str; 49] = [
         "screen",
         "banner",
         "status",
@@ -234,10 +313,24 @@ impl Frame {
         "draft",
         "group",
         "written as",
+        "editing",
+        "search",
+        "sort",
+        "tags",
+        "drill",
+        "target",
+        "next target",
+        "grade",
+        "drill stat",
+        "sustain",
+        "sostenuto",
+        "soft",
+        "settle",
+        "arpeggio",
     ];
 
     /// The labels the Now Playing screen carries: everything but the groups.
-    pub const NOW_PLAYING_LABELS: [&'static str; 33] = [
+    pub const NOW_PLAYING_LABELS: [&'static str; 44] = [
         "screen",
         "banner",
         "status",
@@ -271,10 +364,21 @@ impl Frame {
         "note",
         "notes total",
         "draft",
+        "editing",
+        "drill",
+        "target",
+        "next target",
+        "grade",
+        "drill stat",
+        "sustain",
+        "sostenuto",
+        "soft",
+        "settle",
+        "arpeggio",
     ];
 
     /// The labels the All Notes screen carries: the head block and the groups.
-    pub const ALL_NOTES_LABELS: [&'static str; 18] = [
+    pub const ALL_NOTES_LABELS: [&'static str; 26] = [
         "screen",
         "banner",
         "status",
@@ -293,6 +397,14 @@ impl Frame {
         "note",
         "written as",
         "notes total",
+        "search",
+        "sort",
+        "tags",
+        "sustain",
+        "sostenuto",
+        "soft",
+        "settle",
+        "arpeggio",
     ];
 
     /// True when the keys are up and the display is holding the last chord.

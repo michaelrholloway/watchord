@@ -4,6 +4,8 @@
  STATUS         —
  SCREEN         [Now Playing]    All Notes
 
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ PICKER   press i to choose an input
  HEADLINE       C13/E
  APPROXIMATION  —
  SPOKEN         C major, minor 7, 13
@@ -21,6 +23,8 @@
 
  ANNOTATIONS
 
+ DRILL          off   TARGET —   NEXT TARGET —   GRADE —   DRILL STATS 0
+ EDITING        —
  INVERSION second   SLASH C13/E   VOICING open   SPAN 29   ROOTLESS no   DOUBLINGS —
  UPPER STRUCTURE Am triad over C13
  TREBLE
@@ -52,9 +56,5 @@
 
 
 
-
-
-
-
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · P DRILL · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT

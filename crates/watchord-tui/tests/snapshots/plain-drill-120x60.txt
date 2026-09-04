@@ -1,0 +1,60 @@
+ WATCHORD   NOTES TOTAL 0
+ INPUT fake   STATE held   INPUTS —
+ BANNER         fake input — no MIDI hardware is being read
+ STATUS         —
+ SCREEN         [Now Playing]    All Notes
+
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ PICKER   press i to choose an input
+ HEADLINE       C  E
+ APPROXIMATION  —
+ SPOKEN         —
+ FIT            —
+ DECLINED       no honest reading — these keys do not spell a chord in the grammar
+ KEYS           C3  E3
+ KEY            0.4
+ SOUNDING       60 64
+
+ READINGS 0 · HEADLINE 0 · ALTERNATES 0
+   RANK NAME          ORIGIN     FIT                 SCORE ROOT CLAIMED               SPOKEN
+   none
+
+ ANNOTATIONS    none yet
+
+ DRILL          on   TARGET Dm   NEXT TARGET Dm   GRADE missing G   DRILL STATS 1
+   CHORD         ATTEMPTS  EXACT   LAST
+   C             1         0       YYYY-MM-DD HH:MM
+ EDITING        —
+ INVERSION —   SLASH —   VOICING —   SPAN —   ROOTLESS —   DOUBLINGS —
+ UPPER STRUCTURE —
+ TREBLE  —
+ BASS    —
+ NOTES 0
+   none yet
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ DRAFT          add a note…
+ TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · P DRILL · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT

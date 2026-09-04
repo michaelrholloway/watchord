@@ -15,7 +15,10 @@
 //!   including a file that parses cleanly while some of its *entries* do not.
 //! - A key that cannot round-trip is refused at `add` rather than written.
 
+pub mod drill_store;
 pub mod iso8601;
+
+pub use drill_store::{DRILL_FILE_NAME, JsonDrillStore};
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, ErrorKind, Write};
@@ -363,6 +366,19 @@ impl NoteStoring for JsonNotesStore {
         notes.push(note.clone());
         self.persist(&mut state, notes)?;
         Ok(note)
+    }
+
+    fn update(&self, id: &str, text: &str) -> Result<ChordNote, StoreError> {
+        let mut state = self.lock();
+        let mut notes = self.loaded_notes(&mut state)?;
+        let index = notes
+            .iter()
+            .position(|n| n.id == id)
+            .ok_or_else(|| StoreError::NoSuchNote(id.to_string()))?;
+        notes[index].text = text.to_string();
+        let updated = notes[index].clone();
+        self.persist(&mut state, notes)?;
+        Ok(updated)
     }
 
     fn delete(&self, id: &str) -> Result<(), StoreError> {

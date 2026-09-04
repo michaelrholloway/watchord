@@ -158,6 +158,31 @@ mod tests {
     }
 
     #[test]
+    fn cc64_cc66_and_cc67_decode_on_and_off_at_the_threshold() {
+        // 64 = sustain, 66 = sostenuto, 67 = soft (ticket 13); threshold 64.
+        for controller in [64u8, 66, 67] {
+            assert_eq!(
+                decode(&[0xB0, controller, 127]),
+                [MidiEvent::ControlChange {
+                    controller,
+                    value: 127,
+                    channel: 0
+                }],
+                "controller {controller} on"
+            );
+            assert_eq!(
+                decode(&[0xB0, controller, 0]),
+                [MidiEvent::ControlChange {
+                    controller,
+                    value: 0,
+                    channel: 0
+                }],
+                "controller {controller} off"
+            );
+        }
+    }
+
+    #[test]
     fn velocity_zero_stays_a_note_on() {
         // The tracker owns the velocity-0 rule, not the decoder.
         assert_eq!(

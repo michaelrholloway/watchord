@@ -11,10 +11,14 @@
 //! There is no async runtime in the workspace; a skin's event loop calls `poll`
 //! on its tick, or `wait` when it has nothing else to do.
 
+pub mod drill;
 pub mod fakes;
 pub mod frame;
+pub mod notes;
 
-pub use frame::{Annotations, Frame, FrameReading, FrameState};
+pub use drill::{DrillFit, Xorshift64};
+pub use frame::{Annotations, DrillFrame, DrillStatRow, Frame, FrameReading, FrameState};
+pub use notes::NotesSort;
 
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -22,9 +26,11 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use watchord_core::tuning;
 use watchord_core::{
-    ChordAnalysis, ChordKey, ChordNaming, ChordNote, DeclineReason, NoteName, NoteStoring,
-    ReadingDisplay, SoundingSet, SoundingSetSource,
+    ChordAnalysis, ChordKey, ChordNaming, ChordNote, ChordVocabulary, ControlEvent, DeclineReason,
+    DrillStoring, DrillTarget, NoteName, NoteStoring, PedalKind, ReadingDisplay, SoundingSet,
+    SoundingSetSource,
 };
 
 /// Which screen is showing.
@@ -87,6 +93,8 @@ pub enum ModelEvent {
     Sounding(SoundingSet),
     /// The whole current set of attached input names.
     Inputs(Vec<String>),
+    /// A pedal moved up or down.
+    Control(ControlEvent),
 }
 
 /// The two forwarding threads and the channel they feed, alive between
@@ -98,6 +106,13 @@ struct Listening {
 
 /// The maximum width of the input plate's copy of a device name.
 pub const INPUT_LABEL_LIMIT: usize = 28;
+
+/// The settle window's floor, in milliseconds.
+pub const SETTLE_MIN_MS: u64 = tuning::SETTLE_MIN_MS;
+/// The settle window's ceiling, in milliseconds.
+pub const SETTLE_MAX_MS: u64 = tuning::SETTLE_MAX_MS;
+/// The settle window's step, in milliseconds.
+pub const SETTLE_STEP_MS: u64 = tuning::SETTLE_STEP_MS;
 
 /// Everything on screen.
 pub struct AppModel {
@@ -124,6 +139,17 @@ pub struct AppModel {
     /// The text in the always-present note field.
     pub draft_note_text: String,
 
+    /// The id of the note `draft_note_text` is editing, or `None` when it is
+    /// drafting a new one. Set by [`AppModel::begin_edit`].
+    editing_note_id: Option<String>,
+
+    /// The search query on All Notes, typed live. Filters `note_groups` by
+    /// text, tag, or chord name (spec #9).
+    pub search_text: String,
+
+    /// Which of the three orders All Notes reads in.
+    pub notes_sort: NotesSort,
+
     /// A line of plain words when something outside the model's control went
     /// wrong — no MIDI available, the notes file could not be read. Never a
     /// crash, never a blank screen.
@@ -138,10 +164,48 @@ pub struct AppModel {
     /// is plugged in — a normal state the screen has to be able to say.
     connected_inputs: Vec<String>,
 
+    /// The sustain pedal, as the source last reported it.
+    sustain: bool,
+    /// The sostenuto pedal, as the source last reported it.
+    sostenuto: bool,
+    /// The soft pedal, as the source last reported it.
+    soft: bool,
+    /// The settle window, adjusted live by two keys.
+    settle: Duration,
+    /// True while arpeggio mode is on.
+    arpeggio: bool,
+    /// The notes accumulated so far this arpeggio, while `arpeggio` is on.
+    /// Empty otherwise. A key going fully up, or the sustain pedal lifting,
+    /// clears it — the next note-on starts a fresh chord.
+    arpeggio_notes: SoundingSet,
+
     naming: Arc<dyn ChordNaming>,
     source: Box<dyn SoundingSetSource>,
     store: Arc<dyn NoteStoring>,
     listening: Option<Listening>,
+
+    /// The engine's naming vocabulary, for drawing drill targets. `None`
+    /// until [`AppModel::with_drill`] — a model with no vocabulary simply
+    /// never offers to enter drill, rather than every existing call site
+    /// (tests, other fakes) having to supply one it does not care about.
+    vocabulary: Option<Arc<dyn ChordVocabulary>>,
+    /// Where drill stats are read and recorded. `None` alongside `vocabulary`.
+    drill_store: Option<Arc<dyn DrillStoring>>,
+    /// The drill mode's own state, kept apart from the rest so entering and
+    /// leaving it disturbs nothing else — the same discipline `screen`
+    /// already keeps.
+    drill: DrillState,
+}
+
+/// Drill's state on [`AppModel`]. A mode, not a screen (Michael's ruling,
+/// 2026-09-03): it draws on top of Now Playing rather than replacing it.
+#[derive(Default)]
+struct DrillState {
+    active: bool,
+    target: Option<DrillTarget>,
+    next_target: Option<DrillTarget>,
+    last_grade: Option<(DrillTarget, DrillFit)>,
+    rng: Xorshift64,
 }
 
 impl AppModel {
@@ -159,16 +223,49 @@ impl AppModel {
             notes_for_displayed_chord: Vec::new(),
             note_groups: Vec::new(),
             draft_note_text: String::new(),
+            editing_note_id: None,
+            search_text: String::new(),
+            notes_sort: NotesSort::default(),
             status_message: None,
             banner: None,
             connected_inputs: Vec::new(),
+            sustain: false,
+            sostenuto: false,
+            soft: false,
+            settle: tuning::SETTLE_INTERVAL,
+            arpeggio: false,
+            arpeggio_notes: SoundingSet::silent(),
             naming,
             source,
             store,
             listening: None,
+            vocabulary: None,
+            drill_store: None,
+            drill: DrillState::default(),
         };
         model.reload_all_notes();
         model
+    }
+
+    /// Enables drill: without this, [`AppModel::enter_drill`] is a no-op and
+    /// `frame().drill.active` never turns true. Kept as a builder step,
+    /// separate from the three required seams, so no existing call site —
+    /// fakes, tests, the other graphs — needs to name a vocabulary or a
+    /// drill store it does not use.
+    pub fn with_drill(
+        mut self,
+        vocabulary: Arc<dyn ChordVocabulary>,
+        drill_store: Arc<dyn DrillStoring>,
+    ) -> Self {
+        self.vocabulary = Some(vocabulary);
+        self.drill_store = Some(drill_store);
+        self
+    }
+
+    /// Seeds the drill's target draws, for a test that needs an exact
+    /// sequence rather than merely a deterministic one.
+    pub fn seed_drill_rng(&mut self, seed: u64) {
+        self.drill.rng = Xorshift64::new(seed);
     }
 
     // MARK: - Lifecycle
@@ -189,14 +286,17 @@ impl AppModel {
         let (tx, events) = mpsc::channel();
         let sounding = self.source.sounding_sets();
         let inputs = self.source.connected_inputs();
-        // Two forwarding threads, one per stream. Separate because the two are
+        let controls = self.source.controls();
+        // Three forwarding threads, one per stream. Separate because they are
         // genuinely independent: a keyboard can appear and disappear without a
-        // note being played, and a note can arrive from a source that was
-        // already connected at launch. Each thread ends when its sender side is
-        // dropped, which `stop()` on every source does.
+        // note being played, a pedal can move with no note sounding, and a
+        // note can arrive from a source that was already connected at launch.
+        // Each thread ends when its sender side is dropped, which `stop()` on
+        // every source does.
         let threads = vec![
             forward(sounding, tx.clone(), ModelEvent::Sounding),
-            forward(inputs, tx, ModelEvent::Inputs),
+            forward(inputs, tx.clone(), ModelEvent::Inputs),
+            forward(controls, tx, ModelEvent::Control),
         ];
         self.listening = Some(Listening { events, threads });
     }
@@ -263,6 +363,32 @@ impl AppModel {
         match event {
             ModelEvent::Sounding(sounding) => self.receive(&sounding),
             ModelEvent::Inputs(names) => self.connected_inputs = names,
+            ModelEvent::Control(control) => self.apply_control(control),
+        }
+    }
+
+    /// Applies one pedal moving up or down. Sostenuto toggles arpeggio mode on
+    /// its down edge only, so a press-and-release toggles once, not twice.
+    /// Sustain lifting while arpeggio is on settles the accumulated set — the
+    /// next note-on starts a fresh chord.
+    fn apply_control(&mut self, control: ControlEvent) {
+        match control.pedal {
+            PedalKind::Sustain => {
+                self.sustain = control.down;
+                if !control.down && self.arpeggio {
+                    self.arpeggio_notes = SoundingSet::silent();
+                }
+            }
+            PedalKind::Sostenuto => {
+                self.sostenuto = control.down;
+                if control.down {
+                    self.arpeggio = !self.arpeggio;
+                    if !self.arpeggio {
+                        self.arpeggio_notes = SoundingSet::silent();
+                    }
+                }
+            }
+            PedalKind::Soft => self.soft = control.down,
         }
     }
 
@@ -277,14 +403,36 @@ impl AppModel {
     /// about it with his hands off the keys. Every non-empty set replaces the
     /// display, including one the engine declines to name: a decline is a normal
     /// answer and gets shown, in words.
+    ///
+    /// While arpeggio mode is on, `sounding` is unioned onto the notes already
+    /// accumulated this arpeggio rather than replacing the display outright —
+    /// that is the whole of "a note-on adds and a note-off does not remove
+    /// it," since a key coming up would otherwise shrink what the source
+    /// reports. A key clearing (every key up) empties the accumulator here,
+    /// via the early return below, so the next note-on starts fresh.
     pub fn receive(&mut self, sounding: &SoundingSet) {
         if sounding.is_empty() {
             // Nothing has been played yet: there is no chord to hold, so leave
             // `is_released` false and let the skin show its waiting line.
             self.is_released = self.displayed.is_some();
+            if self.arpeggio {
+                self.arpeggio_notes = SoundingSet::silent();
+            }
             return;
         }
-        let analysis = self.naming.analyze(sounding);
+        let effective = if self.arpeggio {
+            self.arpeggio_notes = SoundingSet::new(
+                self.arpeggio_notes
+                    .midi_notes()
+                    .iter()
+                    .chain(sounding.midi_notes())
+                    .copied(),
+            );
+            self.arpeggio_notes.clone()
+        } else {
+            sounding.clone()
+        };
+        let analysis = self.naming.analyze(&effective);
         let key_changed = self
             .displayed
             .as_ref()
@@ -294,6 +442,136 @@ impl AppModel {
         if key_changed {
             self.reload_notes_for_displayed_chord();
         }
+        if self.drill.active {
+            self.grade_drill_attempt(sounding);
+        }
+    }
+
+    // MARK: - Drill
+
+    /// True once [`AppModel::with_drill`] has supplied both seams — the
+    /// gate `enter_drill` and the plain skin's key handler read before
+    /// offering the mode at all.
+    pub fn can_drill(&self) -> bool {
+        self.vocabulary.is_some() && self.drill_store.is_some()
+    }
+
+    /// True while drill is the active mode.
+    pub fn is_drilling(&self) -> bool {
+        self.drill.active
+    }
+
+    /// Enters drill: draws a target and the target after it. A no-op when
+    /// there is no vocabulary and store, or drill is already active.
+    pub fn enter_drill(&mut self) {
+        if !self.can_drill() || self.drill.active {
+            return;
+        }
+        self.drill.active = true;
+        self.drill.last_grade = None;
+        self.drill.target = self.draw_target();
+        self.drill.next_target = self.draw_target();
+    }
+
+    /// Leaves drill. The last grade and the drawn targets are cleared, so
+    /// re-entering starts a fresh draw rather than resuming a stale one.
+    pub fn exit_drill(&mut self) {
+        self.drill.active = false;
+        self.drill.target = None;
+        self.drill.next_target = None;
+        self.drill.last_grade = None;
+    }
+
+    /// Enters drill if it is off, leaves it if it is on. What the one bound
+    /// key calls.
+    pub fn toggle_drill(&mut self) {
+        if self.drill.active {
+            self.exit_drill();
+        } else {
+            self.enter_drill();
+        }
+    }
+
+    /// Draws one target, weighted toward chords whose `attempts - exact` is
+    /// highest (design note, spec #9): a chord with no history draws like a
+    /// chord with a clean record, and a chord missed more than it has been
+    /// nailed draws more.
+    fn draw_target(&mut self) -> Option<DrillTarget> {
+        let vocabulary = self.vocabulary.as_ref()?;
+        let targets = vocabulary.targets();
+        if targets.is_empty() {
+            return None;
+        }
+        let stats = self
+            .drill_store
+            .as_ref()
+            .and_then(|store| store.stats().ok())
+            .unwrap_or_default();
+        let weights: Vec<u32> = targets
+            .iter()
+            .map(|target| {
+                let stat = stats.iter().find(|s| s.chord_key == target.key);
+                drill::weight_of(stat)
+            })
+            .collect();
+        drill::draw_weighted(&targets, &weights, &mut self.drill.rng).cloned()
+    }
+
+    /// Grades `sounding` against the current target, records the attempt,
+    /// and advances: the next target becomes current, and a fresh next
+    /// target is drawn.
+    fn grade_drill_attempt(&mut self, sounding: &SoundingSet) {
+        let Some(target) = self.drill.target.clone() else {
+            return;
+        };
+        let claimed = target.key.pitch_classes();
+        let played = sounding.pitch_classes();
+        let fit = DrillFit::measure(&claimed, &played);
+        let exact = fit.is_exact();
+        if let Some(store) = &self.drill_store
+            && let Err(error) = store.record(&target.key, exact, SystemTime::now())
+        {
+            self.status_message = Some(format!("Could not save drill stats — {error}"));
+        }
+        self.drill.last_grade = Some((target, fit));
+        self.drill.target = self.drill.next_target.take();
+        self.drill.next_target = self.draw_target();
+    }
+
+    /// Every chord with drill history, newest-attempts first, ties broken by
+    /// name — the stats view (spec #9: "attempts, exact count, and last
+    /// tried per chord").
+    fn drill_stat_rows(&self) -> Vec<DrillStatRow> {
+        let Some(store) = &self.drill_store else {
+            return Vec::new();
+        };
+        let Ok(stats) = store.stats() else {
+            return Vec::new();
+        };
+        let targets = self.vocabulary.as_ref().map(|v| v.targets());
+        let display_of = |key: &ChordKey| -> String {
+            targets
+                .as_ref()
+                .and_then(|ts| ts.iter().find(|t| &t.key == key))
+                .map(|t| t.display.clone())
+                .unwrap_or_else(|| key.raw().to_string())
+        };
+        let mut rows: Vec<DrillStatRow> = stats
+            .iter()
+            .filter(|s| s.attempts > 0)
+            .map(|s| DrillStatRow {
+                chord: display_of(&s.chord_key),
+                attempts: s.attempts,
+                exact: s.exact,
+                last_at: s.last_at,
+            })
+            .collect();
+        rows.sort_by(|a, b| {
+            b.attempts
+                .cmp(&a.attempts)
+                .then_with(|| a.chord.cmp(&b.chord))
+        });
+        rows
     }
 
     // MARK: - Reading the display
@@ -371,6 +649,59 @@ impl AppModel {
     /// failure — nothing plugged in is an ordinary way to open this app.
     pub fn has_no_input(&self) -> bool {
         self.banner.is_none() && self.connected_inputs.is_empty()
+    }
+
+    /// Restricts the source to one named input, or clears the restriction to
+    /// listen to everything. Live — no restart. The picker calls this with a
+    /// name off `connected_inputs`.
+    pub fn select_input(&mut self, name: Option<String>) {
+        self.source.select_input(name);
+    }
+
+    // MARK: - Pedals, settle, arpeggio
+
+    /// The sustain pedal, as the source last reported it.
+    pub fn is_sustain_down(&self) -> bool {
+        self.sustain
+    }
+
+    /// The sostenuto pedal, as the source last reported it.
+    pub fn is_sostenuto_down(&self) -> bool {
+        self.sostenuto
+    }
+
+    /// The soft pedal, as the source last reported it.
+    pub fn is_soft_down(&self) -> bool {
+        self.soft
+    }
+
+    /// True while arpeggio mode is on.
+    pub fn is_arpeggio(&self) -> bool {
+        self.arpeggio
+    }
+
+    /// The settle window, in milliseconds — what the SETTLE plate reads.
+    pub fn settle_ms(&self) -> u64 {
+        self.settle.as_millis() as u64
+    }
+
+    /// Widens the settle window by one step, clamped at `SETTLE_MAX_MS`.
+    pub fn increase_settle(&mut self) {
+        self.set_settle_ms((self.settle_ms() + SETTLE_STEP_MS).min(SETTLE_MAX_MS));
+    }
+
+    /// Narrows the settle window by one step, clamped at `SETTLE_MIN_MS`.
+    pub fn decrease_settle(&mut self) {
+        self.set_settle_ms(
+            self.settle_ms()
+                .saturating_sub(SETTLE_STEP_MS)
+                .max(SETTLE_MIN_MS),
+        );
+    }
+
+    fn set_settle_ms(&mut self, ms: u64) {
+        self.settle = Duration::from_millis(ms);
+        self.source.set_settle(self.settle);
     }
 
     /// The headline as the screen writes it — the name in slash form, the `≈`
@@ -482,10 +813,50 @@ impl AppModel {
         }
     }
 
-    /// True when Enter would save something: a chord to attach to and a
-    /// draft that is not blank.
+    /// True when Enter would save something: a non-blank draft, and — unless
+    /// it is editing an existing note, which needs no live chord — a chord to
+    /// attach it to.
     pub fn can_commit_note(&self) -> bool {
-        self.note_target_key().is_some() && !self.draft_note_text.trim().is_empty()
+        if self.draft_note_text.trim().is_empty() {
+            return false;
+        }
+        self.editing_note_id.is_some() || self.note_target_key().is_some()
+    }
+
+    // MARK: - Editing
+
+    /// True while the field is editing an existing note rather than drafting
+    /// a new one.
+    pub fn is_editing(&self) -> bool {
+        self.editing_note_id.is_some()
+    }
+
+    /// Loads `id`'s text into the field for editing. Looks across both the
+    /// notes on the displayed chord and every group, so a note found on
+    /// either screen can be edited. A no-op when `id` is not found.
+    pub fn begin_edit(&mut self, id: &str) {
+        let found = self
+            .notes_for_displayed_chord
+            .iter()
+            .chain(self.note_groups.iter().flat_map(|g| g.notes.iter()))
+            .find(|n| n.id == id)
+            .cloned();
+        if let Some(note) = found {
+            self.draft_note_text = note.text;
+            self.editing_note_id = Some(note.id);
+        }
+    }
+
+    /// Leaves editing and clears the field. A no-op when not editing.
+    pub fn cancel_edit(&mut self) {
+        if self.editing_note_id.take().is_some() {
+            self.draft_note_text.clear();
+        }
+    }
+
+    /// Steps to the next of the three sort orders.
+    pub fn cycle_notes_sort(&mut self) {
+        self.notes_sort = self.notes_sort.next();
     }
 
     // MARK: - The frame
@@ -519,6 +890,23 @@ impl AppModel {
         } else {
             FrameState::Held
         };
+        let groups = notes::filter_groups(self.note_groups.clone(), &self.search_text);
+        let groups = notes::sort_groups(groups, self.notes_sort);
+        let drill = DrillFrame {
+            active: self.drill.active,
+            target: self.drill.target.as_ref().map(|t| t.display.clone()),
+            next_target: self.drill.next_target.as_ref().map(|t| t.display.clone()),
+            grade: self
+                .drill
+                .last_grade
+                .as_ref()
+                .map(|(_, fit)| fit.tier_name().to_string()),
+            grade_note: self.drill.last_grade.as_ref().and_then(|(_, fit)| {
+                let note = fit.note();
+                if note.is_empty() { None } else { Some(note) }
+            }),
+            stats: self.drill_stat_rows(),
+        };
         Frame {
             screen: self.screen,
             banner: self.banner.clone(),
@@ -548,9 +936,18 @@ impl AppModel {
                 .map(Annotations::from)
                 .unwrap_or_default(),
             notes: self.notes_for_displayed_chord.clone(),
-            groups: self.note_groups.clone(),
+            groups,
             notes_total: self.total_note_count(),
             draft: self.draft_note_text.clone(),
+            search: self.search_text.clone(),
+            notes_sort: self.notes_sort,
+            editing: self.editing_note_id.is_some(),
+            drill,
+            sustain: self.sustain,
+            sostenuto: self.sostenuto,
+            soft: self.soft,
+            settle_ms: self.settle_ms(),
+            arpeggio: self.arpeggio,
         }
     }
 
@@ -563,12 +960,27 @@ impl AppModel {
     /// later resurfaces under `Am7`.
     pub fn commit_note(&mut self) {
         let text = self.draft_note_text.trim().to_string();
-        let Some(key) = self.note_target_key() else {
-            return;
-        };
         if text.is_empty() {
             return;
         }
+        if let Some(id) = self.editing_note_id.clone() {
+            match self.store.update(&id, &text) {
+                Ok(_) => {
+                    self.draft_note_text.clear();
+                    self.editing_note_id = None;
+                    self.status_message = None;
+                    self.reload_notes_for_displayed_chord();
+                    self.reload_all_notes();
+                }
+                Err(error) => {
+                    self.status_message = Some(format!("Could not save the note — {error}"));
+                }
+            }
+            return;
+        }
+        let Some(key) = self.note_target_key() else {
+            return;
+        };
         let spelling = self.headline_text();
         match self.store.add(&text, &key, &spelling) {
             Ok(_) => {

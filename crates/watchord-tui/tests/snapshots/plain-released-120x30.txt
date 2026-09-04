@@ -1,9 +1,11 @@
- WATCHORD   NOTES TOTAL 3
+ WATCHORD   NOTES TOTAL 3   NOTES 2
  INPUT fake   STATE released   INPUTS —
  BANNER         fake input — no MIDI hardware is being read
  STATUS         —
  SCREEN         [Now Playing]    All Notes
 
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ PICKER   press i to choose an input
  HEADLINE       C6
  APPROXIMATION  —
  SPOKEN         C major 6
@@ -21,10 +23,8 @@
 
  ANNOTATIONS
 
+ DRILL          off   TARGET —   NEXT TARGET —   GRADE —   DRILL STATS 0
+ EDITING        —
  INVERSION root   SLASH —   VOICING close   SPAN 9   ROOTLESS no   DOUBLINGS —
- UPPER STRUCTURE Am triad over C6
- TREBLE
-   --
-
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · P DRILL · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT
