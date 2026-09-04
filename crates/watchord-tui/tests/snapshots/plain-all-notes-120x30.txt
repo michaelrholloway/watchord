@@ -27,4 +27,4 @@
    plain, but it lands                                                             F           YYYY-MM-DD HH:MM  delete
 
 
- TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · P DRILL · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DEL · E EDIT · S SORT · P DRILL · X MD · ^X JSON · ⇧ENTER NL · ENTER · Q QUIT

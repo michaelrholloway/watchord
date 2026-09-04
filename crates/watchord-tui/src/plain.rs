@@ -31,8 +31,11 @@ use crate::when;
 /// The value drawn for an absent optional field.
 const ABSENT: &str = "—";
 
-/// The one-line key reference at the foot of every screen.
-const KEYS_HELP: &str = "tab screen · ↑↓ select · d delete · e edit · s sort · p drill · shift-enter line break · enter save · q quit";
+/// The one-line key reference at the foot of every screen. Kept under 118
+/// characters (the 120-column test width, minus the page's 2-column margin)
+/// so `q quit` at the end is never clipped — merging five tickets' worth of
+/// keys onto one line left no room for full words.
+const KEYS_HELP: &str = "tab screen · ↑↓ select · ←→ history · d del · e edit · s sort · p drill · x md · ^x json · ⇧enter nl · enter · q quit";
 
 /// A note's text on one row: an embedded line break would otherwise split the
 /// row, so it is shown as a visible mark instead.
@@ -84,6 +87,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
         Screen::NowPlaying => {
             readings(frame, ui, &mut page, &mut hits);
             annotations(frame, &mut page);
+            history_block(frame, &mut page);
             drill_block(frame, &mut page);
             editing(frame, &mut page);
             // Last of the Now Playing extras: the real staff (ticket #11) can
@@ -399,7 +403,47 @@ fn annotations(frame: &Frame, page: &mut Page) {
         ""
     };
     page.line("annotations", value);
-    page.skip();
+    // No trailing blank row: four tickets now share this 30-row page, and the
+    // existing 30-row snapshot needs a real note to still show underneath.
+}
+
+/// The history strip (oldest first, newest last, `CONTEXT.md`), the `HISTORY
+/// n/64` plate while stepped, and the voice-leading line for whatever is
+/// currently on screen — live, or the entry stepped to. One row: three more
+/// tickets now share this 30-row page (pedals, the picker, editing), and the
+/// existing 30-row snapshot still has to show a real note underneath.
+fn history_block(frame: &Frame, page: &mut Page) {
+    let plate = match frame.history_step {
+        Some(step) => format!("  HISTORY {}/{}", step.index, step.total),
+        None => String::new(),
+    };
+    let strip = if frame.history.is_empty() {
+        "none yet".to_string()
+    } else {
+        frame
+            .history
+            .iter()
+            .map(|entry| match entry.seconds_since_previous {
+                Some(seconds) => format!("{}({seconds}s)", entry.name),
+                None => entry.name.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let voice_leading = frame
+        .displayed_history_entry()
+        .and_then(|entry| entry.voice_leading.as_ref());
+    let voice_leading_value = match voice_leading {
+        Some(vl) => format!(
+            "{}st {}kept {}max",
+            vl.total_semitones, vl.common_tones_kept, vl.largest_move
+        ),
+        None => ABSENT.to_string(),
+    };
+    page.text(&format!(
+        "HISTORY {}{plate}  {strip}   VOICE LEADING {voice_leading_value}",
+        frame.history.len()
+    ));
 }
 
 fn voicing_and_staff(frame: &Frame, page: &mut Page) {

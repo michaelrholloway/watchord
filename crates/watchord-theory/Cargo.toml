@@ -1,11 +1,13 @@
 [package]
 name = "watchord-theory"
-description = "watchord annotations: voicing, inversion, slash, upper structure, staff — pure functions over an analysis, never the engine"
+description = "watchord theory: pure annotations derived after the engine ranks — voicing, inversion, slash, upper structure, staff, voice leading"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
 
 [dependencies]
 watchord-core = { workspace = true, features = ["serde"] }

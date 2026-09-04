@@ -22,7 +22,7 @@
    3    CΔ6           enharmonic exact               89    C    C E G A               C major 6, major 7
 
  ANNOTATIONS
-
+ HISTORY 1  C6   VOICE LEADING —
  DRILL          off   TARGET —   NEXT TARGET —   GRADE —   DRILL STATS 0
  EDITING        —
  INVERSION root   SLASH —   VOICING close   SPAN 9   ROOTLESS no   DOUBLINGS —
@@ -41,4 +41,4 @@
    -- ●   C3
  BASS    —
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · P DRILL · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DEL · E EDIT · S SORT · P DRILL · X MD · ^X JSON · ⇧ENTER NL · ENTER · Q QUIT
