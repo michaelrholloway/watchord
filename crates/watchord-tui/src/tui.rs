@@ -86,28 +86,51 @@ enum Action {
     Commit,
     Backspace,
     Type(char),
+    /// Inserts a line break into the active field, rather than committing.
+    Newline,
+    /// `e`: loads the selected note into the field for editing.
+    EditSelected,
+    /// `s`: steps All Notes to its next sort order.
+    CycleSort,
     Nothing,
 }
 
 /// Reads a key against the state that decides what it means.
 ///
-/// The field takes every printable key, so the two letter commands only fire
-/// when the field is empty: `q` quits and `d` deletes the selected note. Ctrl-C
-/// always quits.
-fn action_for(key: KeyEvent, draft_is_empty: bool, has_selection: bool) -> Action {
+/// The field takes every printable key, so the letter commands only fire when
+/// it is empty: `q` quits, `d` deletes the selected note, `e` edits it, and
+/// `s` cycles the All Notes sort order. Ctrl-C always quits.
+///
+/// Shift-Enter inserts a line break rather than committing. crossterm reports
+/// it as `KeyCode::Enter` with `KeyModifiers::SHIFT` on most terminals — this
+/// is read from that combination. Some terminals never distinguish Shift-Enter
+/// from a bare Enter at the protocol level, and on those this cannot tell the
+/// two apart; there is no workaround from here.
+fn action_for(
+    key: KeyEvent,
+    screen: Screen,
+    active_field_is_empty: bool,
+    has_selection: bool,
+) -> Action {
     if key.kind == KeyEventKind::Release {
         return Action::Nothing;
     }
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     match key.code {
         KeyCode::Char('c') if ctrl => Action::Quit,
-        KeyCode::Char('q') if draft_is_empty => Action::Quit,
-        KeyCode::Char('d') if draft_is_empty && has_selection => Action::DeleteSelected,
+        KeyCode::Char('q') if active_field_is_empty => Action::Quit,
+        KeyCode::Char('d') if active_field_is_empty && has_selection => Action::DeleteSelected,
+        KeyCode::Char('e') if active_field_is_empty && has_selection => Action::EditSelected,
+        KeyCode::Char('s') if active_field_is_empty && screen == Screen::AllNotes => {
+            Action::CycleSort
+        }
         KeyCode::Tab => Action::NextScreen,
         KeyCode::BackTab => Action::PreviousScreen,
         KeyCode::Up => Action::SelectUp,
         KeyCode::Down => Action::SelectDown,
         KeyCode::Esc => Action::ClearSelection,
+        KeyCode::Enter if shift => Action::Newline,
         KeyCode::Enter => Action::Commit,
         KeyCode::Backspace => Action::Backspace,
         KeyCode::Char(c) if !ctrl => Action::Type(c),
@@ -187,7 +210,10 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
                 ui.set_selected(screen, Some(next));
             }
         }
-        Action::ClearSelection => ui.set_selected(screen, None),
+        Action::ClearSelection => {
+            ui.set_selected(screen, None);
+            model.cancel_edit();
+        }
         Action::DeleteSelected => {
             if let Some(id) = screens::selected_note_id(&model.frame(), ui, screen) {
                 model.delete_note(&id);
@@ -199,11 +225,30 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
                 ui.set_selected(screen, kept);
             }
         }
-        Action::Commit => model.commit_note(),
-        Action::Backspace => {
-            model.draft_note_text.pop();
+        Action::EditSelected => {
+            if let Some(id) = screens::selected_note_id(&model.frame(), ui, screen) {
+                model.begin_edit(&id);
+            }
         }
-        Action::Type(c) => model.draft_note_text.push(c),
+        Action::CycleSort => model.cycle_notes_sort(),
+        Action::Commit => model.commit_note(),
+        Action::Backspace => match screen {
+            Screen::AllNotes => {
+                model.search_text.pop();
+            }
+            Screen::NowPlaying => {
+                model.draft_note_text.pop();
+            }
+        },
+        Action::Type(c) => match screen {
+            Screen::AllNotes => model.search_text.push(c),
+            Screen::NowPlaying => model.draft_note_text.push(c),
+        },
+        Action::Newline => {
+            if screen == Screen::NowPlaying {
+                model.draft_note_text.push('\n');
+            }
+        }
         Action::Nothing => {}
     }
     true
@@ -245,9 +290,14 @@ pub fn run(mut model: AppModel, skin: Skin) -> io::Result<()> {
         if event::poll(TICK)? {
             match event::read()? {
                 Event::Key(key) => {
+                    let active_field_is_empty = match model.screen {
+                        Screen::NowPlaying => model.draft_note_text.is_empty(),
+                        Screen::AllNotes => model.search_text.is_empty(),
+                    };
                     let action = action_for(
                         key,
-                        model.draft_note_text.is_empty(),
+                        model.screen,
+                        active_field_is_empty,
                         ui.selected(model.screen).is_some(),
                     );
                     if !apply(action, &mut model, &mut ui) {
@@ -407,11 +457,11 @@ mod tests {
     #[test]
     fn q_quits_only_when_the_field_is_empty() {
         assert_eq!(
-            action_for(key(KeyCode::Char('q')), true, false),
+            action_for(key(KeyCode::Char('q')), Screen::NowPlaying, true, false),
             Action::Quit
         );
         assert_eq!(
-            action_for(key(KeyCode::Char('q')), false, false),
+            action_for(key(KeyCode::Char('q')), Screen::NowPlaying, false, false),
             Action::Type('q')
         );
     }
@@ -419,23 +469,128 @@ mod tests {
     #[test]
     fn ctrl_c_always_quits() {
         let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(action_for(ctrl_c, false, true), Action::Quit);
+        assert_eq!(
+            action_for(ctrl_c, Screen::NowPlaying, false, true),
+            Action::Quit
+        );
     }
 
     #[test]
     fn d_deletes_only_with_a_selection_and_an_empty_field() {
         assert_eq!(
-            action_for(key(KeyCode::Char('d')), true, true),
+            action_for(key(KeyCode::Char('d')), Screen::NowPlaying, true, true),
             Action::DeleteSelected
         );
         assert_eq!(
-            action_for(key(KeyCode::Char('d')), true, false),
+            action_for(key(KeyCode::Char('d')), Screen::NowPlaying, true, false),
             Action::Type('d')
         );
         assert_eq!(
-            action_for(key(KeyCode::Char('d')), false, true),
+            action_for(key(KeyCode::Char('d')), Screen::NowPlaying, false, true),
             Action::Type('d')
         );
+    }
+
+    #[test]
+    fn e_edits_only_with_a_selection_and_an_empty_field() {
+        assert_eq!(
+            action_for(key(KeyCode::Char('e')), Screen::NowPlaying, true, true),
+            Action::EditSelected
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Char('e')), Screen::NowPlaying, true, false),
+            Action::Type('e')
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Char('e')), Screen::NowPlaying, false, true),
+            Action::Type('e')
+        );
+    }
+
+    #[test]
+    fn s_cycles_sort_only_on_all_notes_with_an_empty_field() {
+        assert_eq!(
+            action_for(key(KeyCode::Char('s')), Screen::AllNotes, true, false),
+            Action::CycleSort
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Char('s')), Screen::NowPlaying, true, false),
+            Action::Type('s'),
+            "sort has no meaning on Now Playing"
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Char('s')), Screen::AllNotes, false, false),
+            Action::Type('s')
+        );
+    }
+
+    #[test]
+    fn shift_enter_inserts_a_line_break_plain_enter_commits() {
+        let shift_enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT);
+        assert_eq!(
+            action_for(shift_enter, Screen::NowPlaying, true, false),
+            Action::Newline
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Enter), Screen::NowPlaying, true, false),
+            Action::Commit
+        );
+    }
+
+    #[test]
+    fn typing_goes_to_the_draft_on_now_playing_and_the_search_on_all_notes() {
+        let mut model = model_with_notes();
+        let mut ui = UiState::default();
+
+        model.screen = Screen::NowPlaying;
+        apply(Action::Type('x'), &mut model, &mut ui);
+        assert!(model.draft_note_text.ends_with('x'));
+        assert_eq!(model.search_text, "");
+
+        model.screen = Screen::AllNotes;
+        apply(Action::Type('y'), &mut model, &mut ui);
+        assert_eq!(model.search_text, "y");
+
+        apply(Action::Backspace, &mut model, &mut ui);
+        assert_eq!(model.search_text, "");
+    }
+
+    #[test]
+    fn e_loads_the_selected_note_for_editing_and_commit_updates_it() {
+        let mut model = model_with_notes();
+        let mut ui = UiState::default();
+        ui.set_selected(Screen::NowPlaying, Some(0));
+        let target_id = model.notes_for_displayed_chord()[0].id.clone();
+
+        apply(Action::EditSelected, &mut model, &mut ui);
+        assert!(model.is_editing());
+        assert_eq!(
+            model.draft_note_text,
+            model.notes_for_displayed_chord()[0].text
+        );
+
+        model.draft_note_text = "edited via the field".into();
+        apply(Action::Commit, &mut model, &mut ui);
+
+        assert!(!model.is_editing());
+        assert_eq!(
+            model.notes_for_displayed_chord()[0].text,
+            "edited via the field"
+        );
+        assert_eq!(model.notes_for_displayed_chord()[0].id, target_id);
+    }
+
+    #[test]
+    fn esc_cancels_an_edit_in_progress() {
+        let mut model = model_with_notes();
+        let mut ui = UiState::default();
+        ui.set_selected(Screen::NowPlaying, Some(0));
+        apply(Action::EditSelected, &mut model, &mut ui);
+        assert!(model.is_editing());
+
+        apply(Action::ClearSelection, &mut model, &mut ui);
+        assert!(!model.is_editing());
+        assert_eq!(model.draft_note_text, "");
     }
 
     #[test]
