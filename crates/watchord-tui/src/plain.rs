@@ -32,7 +32,7 @@ use crate::when;
 const ABSENT: &str = "—";
 
 /// The one-line key reference at the foot of every screen.
-const KEYS_HELP: &str = "tab screen · ↑↓ select · d delete · e edit · s sort · shift-enter line break · enter save · q quit";
+const KEYS_HELP: &str = "tab screen · ↑↓ select · d delete · e edit · s sort · p drill · shift-enter line break · enter save · q quit";
 
 /// A note's text on one row: an embedded line break would otherwise split the
 /// row, so it is shown as a visible mark instead.
@@ -82,6 +82,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
         Screen::NowPlaying => {
             readings(frame, ui, &mut page, &mut hits);
             annotations(frame, &mut page);
+            drill_block(frame, &mut page);
             editing(frame, &mut page);
             notes(frame, ui, &mut page, &mut hits);
             note_field(frame, field_row, &mut page, &mut hits)
@@ -345,6 +346,54 @@ fn annotations(frame: &Frame, page: &mut Page) {
     };
     page.line("annotations", value);
     page.skip();
+}
+
+const CHORD_WIDTH: usize = 14;
+const ATTEMPTS_WIDTH: usize = 10;
+const EXACT_WIDTH: usize = 8;
+
+/// Drill: a mode on Now Playing, not a screen (spec #9, ticket #14). Kept to
+/// two guaranteed rows — one line folding target, next target, and grade
+/// together, one stats header — so a 30-row terminal still fits everything
+/// below it (the note field, `editing`); the per-chord stat rows beneath the
+/// header are the part that is free to run out of room, the same way the
+/// notes and group tables already do.
+fn drill_block(frame: &Frame, page: &mut Page) {
+    let drill = &frame.drill;
+    let status = if drill.active { "on" } else { "off" };
+    page.line(
+        "drill",
+        &format!(
+            "{status}   TARGET {}   NEXT TARGET {}   GRADE {}   DRILL STATS {}",
+            or_absent(drill.target.as_deref()),
+            or_absent(drill.next_target.as_deref()),
+            or_absent(drill.grade_display()),
+            drill.stats.len(),
+        ),
+    );
+    if !drill.stats.is_empty() {
+        page.text(&format!(
+            "{}{}{}{}LAST",
+            UNSELECTED,
+            cell("CHORD", CHORD_WIDTH),
+            cell("ATTEMPTS", ATTEMPTS_WIDTH),
+            cell("EXACT", EXACT_WIDTH),
+        ));
+        for row in &drill.stats {
+            let last = row
+                .last_at
+                .map(when::format)
+                .unwrap_or_else(|| ABSENT.to_string());
+            page.text(&format!(
+                "{}{}{}{}{}",
+                UNSELECTED,
+                cell(&row.chord, CHORD_WIDTH),
+                cell(&row.attempts.to_string(), ATTEMPTS_WIDTH),
+                cell(&row.exact.to_string(), EXACT_WIDTH),
+                last,
+            ));
+        }
+    }
 }
 
 /// Whether the note field is editing an existing note or drafting a new one.

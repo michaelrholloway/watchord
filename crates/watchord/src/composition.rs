@@ -9,15 +9,17 @@ use std::any::type_name;
 use std::sync::Arc;
 
 use watchord_core::{
-    ChordFit, ChordNaming, ChordNote, NoteStoring, SoundingSet, SoundingSetSource, SpellingOrigin,
+    ChordFit, ChordNaming, ChordNote, ChordVocabulary, DrillStoring, NoteStoring, SoundingSet,
+    SoundingSetSource, SpellingOrigin,
 };
-use watchord_engine::NamingEngine;
+use watchord_engine::{EngineVocabulary, NamingEngine};
 use watchord_midi::MidiSource;
 use watchord_model::fakes::{
-    InMemoryNoteStore, ScriptedSoundingSetSource, StubAlternate, StubChordNaming,
+    FixedVocabulary, InMemoryDrillStore, InMemoryNoteStore, ScriptedSoundingSetSource,
+    StubAlternate, StubChordNaming,
 };
 use watchord_model::{AppModel, Screen, seconds_ago};
-use watchord_store::JsonNotesStore;
+use watchord_store::{JsonDrillStore, JsonNotesStore};
 use watchord_tui::Skin;
 
 /// What the command line asked for.
@@ -96,6 +98,10 @@ pub struct Composition {
     pub naming: Arc<dyn ChordNaming>,
     pub source: Box<dyn SoundingSetSource>,
     pub store: Arc<dyn NoteStoring>,
+    /// The engine's naming vocabulary, for drill (ticket #14).
+    pub vocabulary: Arc<dyn ChordVocabulary>,
+    /// Where drill stats live, for drill (ticket #14).
+    pub drill_store: Arc<dyn DrillStoring>,
     /// Announced on screen when the graph is not the real one, so a fake run
     /// can never be mistaken for a real one by looking at it.
     pub banner: Option<String>,
@@ -123,6 +129,8 @@ impl Composition {
         naming: N,
         source: S,
         store: T,
+        vocabulary: Arc<dyn ChordVocabulary>,
+        drill_store: Arc<dyn DrillStoring>,
         banner: Option<&str>,
         screen: Screen,
     ) -> Self
@@ -140,13 +148,16 @@ impl Composition {
             naming: Arc::new(naming),
             source: Box::new(source),
             store: Arc::new(store),
+            vocabulary,
+            drill_store,
             banner: banner.map(str::to_string),
             screen,
         }
     }
 
     pub fn make_model(self) -> AppModel {
-        let mut model = AppModel::new(self.naming, self.source, self.store);
+        let mut model = AppModel::new(self.naming, self.source, self.store)
+            .with_drill(self.vocabulary, self.drill_store);
         model.screen = self.screen;
         if let Some(banner) = self.banner {
             model.announce(banner);
@@ -163,10 +174,15 @@ impl Composition {
     pub fn live(input: Option<String>) -> Composition {
         let store = JsonNotesStore::real()
             .unwrap_or_else(|| JsonNotesStore::at(watchord_store::DEFAULT_FILE_NAME));
+        // `drill.json` lives beside whichever notes file is actually in use,
+        // real or the working-directory fallback — never inside it (ADR-0004).
+        let drill_store = JsonDrillStore::beside_notes(store.location());
         Self::assemble(
             NamingEngine::new(),
             MidiSource::new(input),
             store,
+            Arc::new(EngineVocabulary::new()),
+            Arc::new(drill_store),
             None,
             Screen::NowPlaying,
         )
@@ -237,6 +253,8 @@ impl Composition {
             naming,
             source,
             store,
+            Arc::new(demo_vocabulary()),
+            Arc::new(InMemoryDrillStore::default()),
             Some("fake input — no MIDI hardware is being read"),
             screen,
         )
@@ -293,6 +311,8 @@ impl Composition {
             naming,
             ScriptedSoundingSetSource::new(vec![c13]),
             InMemoryNoteStore::default(),
+            Arc::new(demo_vocabulary()),
+            Arc::new(InMemoryDrillStore::default()),
             Some("fake input — fit tiers are stubbed, no MIDI hardware is being read"),
             Screen::NowPlaying,
         )
@@ -331,6 +351,19 @@ impl Composition {
 
 fn new_id() -> String {
     uuid::Uuid::new_v4().to_string().to_uppercase()
+}
+
+/// A small hand-written vocabulary for the fake graphs — never the real
+/// engine's catalog (ticket #14's fakes must not become a second engine,
+/// the same discipline `StubChordNaming` already keeps).
+fn demo_vocabulary() -> FixedVocabulary {
+    FixedVocabulary::new(vec![
+        FixedVocabulary::target("C", &[0, 4, 7]),
+        FixedVocabulary::target("Am7", &[9, 0, 4, 7]),
+        FixedVocabulary::target("F", &[5, 9, 0]),
+        FixedVocabulary::target("Cm7", &[0, 3, 7, 10]),
+        FixedVocabulary::target("G7", &[7, 11, 2, 5]),
+    ])
 }
 
 #[cfg(test)]

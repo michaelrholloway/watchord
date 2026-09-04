@@ -16,8 +16,8 @@ use std::time::SystemTime;
 use watchord_core::tuning;
 use watchord_core::{
     ChordAnalysis, ChordFit, ChordKey, ChordNaming, ChordNote, ChordReading, ChordRoot,
-    DeclineReason, NoteStoring, PitchClass, SoundingSet, SoundingSetSource, SourceError,
-    SpellingOrigin, StoreError,
+    ChordVocabulary, DeclineReason, DrillChordStat, DrillStoring, DrillTarget, NoteStoring,
+    PitchClass, SoundingSet, SoundingSetSource, SourceError, SpellingOrigin, StoreError,
 };
 
 /// What the real store says when asked to save against the empty chord key.
@@ -429,6 +429,119 @@ impl StubAlternate {
         self.fit = fit;
         self.claiming = Some(claiming.to_vec());
         self
+    }
+}
+
+// MARK: - FixedVocabulary
+
+/// A `ChordVocabulary` over a hand-written list — never the real engine's
+/// catalog. Exists so a test or a demo can state "the drill draws from
+/// exactly these chords" in one line.
+#[derive(Clone, Default)]
+pub struct FixedVocabulary {
+    targets: Vec<DrillTarget>,
+}
+
+impl FixedVocabulary {
+    /// A vocabulary of exactly `targets`.
+    pub fn new(targets: Vec<DrillTarget>) -> Self {
+        FixedVocabulary { targets }
+    }
+
+    /// One target: `display` naming the pitch classes in `pitch_classes`.
+    pub fn target(display: &str, pitch_classes: &[i32]) -> DrillTarget {
+        DrillTarget {
+            key: ChordKey::new(pitch_classes.iter().map(|&v| PitchClass::new(v))),
+            display: display.to_string(),
+        }
+    }
+}
+
+impl ChordVocabulary for FixedVocabulary {
+    fn targets(&self) -> Vec<DrillTarget> {
+        self.targets.clone()
+    }
+}
+
+// MARK: - InMemoryDrillStore
+
+struct DrillInner {
+    stats: Mutex<Vec<DrillChordStat>>,
+    record_calls: Mutex<usize>,
+    failure: Option<String>,
+}
+
+/// A `DrillStoring` that keeps everything in memory. Never touches the disk.
+#[derive(Clone)]
+pub struct InMemoryDrillStore {
+    inner: Arc<DrillInner>,
+}
+
+impl Default for InMemoryDrillStore {
+    fn default() -> Self {
+        Self::new(Vec::new())
+    }
+}
+
+impl InMemoryDrillStore {
+    /// A store holding `seed`, in any order.
+    pub fn new(seed: Vec<DrillChordStat>) -> Self {
+        Self::build(seed, None)
+    }
+
+    /// A store whose every operation fails with `message`.
+    pub fn failing(message: &str) -> Self {
+        Self::build(Vec::new(), Some(message.to_string()))
+    }
+
+    fn build(seed: Vec<DrillChordStat>, failure: Option<String>) -> Self {
+        InMemoryDrillStore {
+            inner: Arc::new(DrillInner {
+                stats: Mutex::new(seed),
+                record_calls: Mutex::new(0),
+                failure,
+            }),
+        }
+    }
+
+    /// How many times `record` was reached, regardless of whether it failed.
+    pub fn record_call_count(&self) -> usize {
+        *lock(&self.inner.record_calls)
+    }
+}
+
+impl DrillStoring for InMemoryDrillStore {
+    fn stats(&self) -> Result<Vec<DrillChordStat>, StoreError> {
+        if let Some(message) = &self.inner.failure {
+            return Err(StoreError::Io(message.clone()));
+        }
+        Ok(lock(&self.inner.stats).clone())
+    }
+
+    fn record(
+        &self,
+        key: &ChordKey,
+        exact: bool,
+        at: SystemTime,
+    ) -> Result<DrillChordStat, StoreError> {
+        *lock(&self.inner.record_calls) += 1;
+        if let Some(message) = &self.inner.failure {
+            return Err(StoreError::Io(message.clone()));
+        }
+        let mut stats = lock(&self.inner.stats);
+        let row = match stats.iter_mut().find(|s| s.chord_key == *key) {
+            Some(row) => row,
+            None => {
+                stats.push(DrillChordStat::new(key.clone()));
+                stats.last_mut().expect("just pushed")
+            }
+        };
+        row.attempts += 1;
+        if exact {
+            row.exact += 1;
+        }
+        row.last_at = Some(at);
+        Ok(row.clone())
     }
 }
 

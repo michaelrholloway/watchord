@@ -92,6 +92,8 @@ enum Action {
     EditSelected,
     /// `s`: steps All Notes to its next sort order.
     CycleSort,
+    /// `p`: enters drill if it is off, leaves it if it is on.
+    ToggleDrill,
     Nothing,
 }
 
@@ -125,6 +127,7 @@ fn action_for(
         KeyCode::Char('s') if active_field_is_empty && screen == Screen::AllNotes => {
             Action::CycleSort
         }
+        KeyCode::Char('p') if active_field_is_empty => Action::ToggleDrill,
         KeyCode::Tab => Action::NextScreen,
         KeyCode::BackTab => Action::PreviousScreen,
         KeyCode::Up => Action::SelectUp,
@@ -231,6 +234,7 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
             }
         }
         Action::CycleSort => model.cycle_notes_sort(),
+        Action::ToggleDrill => model.toggle_drill(),
         Action::Commit => model.commit_note(),
         Action::Backspace => match screen {
             Screen::AllNotes => {

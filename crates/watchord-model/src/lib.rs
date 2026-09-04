@@ -11,11 +11,13 @@
 //! There is no async runtime in the workspace; a skin's event loop calls `poll`
 //! on its tick, or `wait` when it has nothing else to do.
 
+pub mod drill;
 pub mod fakes;
 pub mod frame;
 pub mod notes;
 
-pub use frame::{Annotations, Frame, FrameReading, FrameState};
+pub use drill::{DrillFit, Xorshift64};
+pub use frame::{Annotations, DrillFrame, DrillStatRow, Frame, FrameReading, FrameState};
 pub use notes::NotesSort;
 
 use std::sync::Arc;
@@ -25,8 +27,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use watchord_core::{
-    ChordAnalysis, ChordKey, ChordNaming, ChordNote, DeclineReason, NoteName, NoteStoring,
-    ReadingDisplay, SoundingSet, SoundingSetSource,
+    ChordAnalysis, ChordKey, ChordNaming, ChordNote, ChordVocabulary, DeclineReason, DrillStoring,
+    DrillTarget, NoteName, NoteStoring, ReadingDisplay, SoundingSet, SoundingSetSource,
 };
 
 /// Which screen is showing.
@@ -155,6 +157,29 @@ pub struct AppModel {
     source: Box<dyn SoundingSetSource>,
     store: Arc<dyn NoteStoring>,
     listening: Option<Listening>,
+
+    /// The engine's naming vocabulary, for drawing drill targets. `None`
+    /// until [`AppModel::with_drill`] — a model with no vocabulary simply
+    /// never offers to enter drill, rather than every existing call site
+    /// (tests, other fakes) having to supply one it does not care about.
+    vocabulary: Option<Arc<dyn ChordVocabulary>>,
+    /// Where drill stats are read and recorded. `None` alongside `vocabulary`.
+    drill_store: Option<Arc<dyn DrillStoring>>,
+    /// The drill mode's own state, kept apart from the rest so entering and
+    /// leaving it disturbs nothing else — the same discipline `screen`
+    /// already keeps.
+    drill: DrillState,
+}
+
+/// Drill's state on [`AppModel`]. A mode, not a screen (Michael's ruling,
+/// 2026-09-03): it draws on top of Now Playing rather than replacing it.
+#[derive(Default)]
+struct DrillState {
+    active: bool,
+    target: Option<DrillTarget>,
+    next_target: Option<DrillTarget>,
+    last_grade: Option<(DrillTarget, DrillFit)>,
+    rng: Xorshift64,
 }
 
 impl AppModel {
@@ -182,9 +207,33 @@ impl AppModel {
             source,
             store,
             listening: None,
+            vocabulary: None,
+            drill_store: None,
+            drill: DrillState::default(),
         };
         model.reload_all_notes();
         model
+    }
+
+    /// Enables drill: without this, [`AppModel::enter_drill`] is a no-op and
+    /// `frame().drill.active` never turns true. Kept as a builder step,
+    /// separate from the three required seams, so no existing call site —
+    /// fakes, tests, the other graphs — needs to name a vocabulary or a
+    /// drill store it does not use.
+    pub fn with_drill(
+        mut self,
+        vocabulary: Arc<dyn ChordVocabulary>,
+        drill_store: Arc<dyn DrillStoring>,
+    ) -> Self {
+        self.vocabulary = Some(vocabulary);
+        self.drill_store = Some(drill_store);
+        self
+    }
+
+    /// Seeds the drill's target draws, for a test that needs an exact
+    /// sequence rather than merely a deterministic one.
+    pub fn seed_drill_rng(&mut self, seed: u64) {
+        self.drill.rng = Xorshift64::new(seed);
     }
 
     // MARK: - Lifecycle
@@ -310,6 +359,136 @@ impl AppModel {
         if key_changed {
             self.reload_notes_for_displayed_chord();
         }
+        if self.drill.active {
+            self.grade_drill_attempt(sounding);
+        }
+    }
+
+    // MARK: - Drill
+
+    /// True once [`AppModel::with_drill`] has supplied both seams — the
+    /// gate `enter_drill` and the plain skin's key handler read before
+    /// offering the mode at all.
+    pub fn can_drill(&self) -> bool {
+        self.vocabulary.is_some() && self.drill_store.is_some()
+    }
+
+    /// True while drill is the active mode.
+    pub fn is_drilling(&self) -> bool {
+        self.drill.active
+    }
+
+    /// Enters drill: draws a target and the target after it. A no-op when
+    /// there is no vocabulary and store, or drill is already active.
+    pub fn enter_drill(&mut self) {
+        if !self.can_drill() || self.drill.active {
+            return;
+        }
+        self.drill.active = true;
+        self.drill.last_grade = None;
+        self.drill.target = self.draw_target();
+        self.drill.next_target = self.draw_target();
+    }
+
+    /// Leaves drill. The last grade and the drawn targets are cleared, so
+    /// re-entering starts a fresh draw rather than resuming a stale one.
+    pub fn exit_drill(&mut self) {
+        self.drill.active = false;
+        self.drill.target = None;
+        self.drill.next_target = None;
+        self.drill.last_grade = None;
+    }
+
+    /// Enters drill if it is off, leaves it if it is on. What the one bound
+    /// key calls.
+    pub fn toggle_drill(&mut self) {
+        if self.drill.active {
+            self.exit_drill();
+        } else {
+            self.enter_drill();
+        }
+    }
+
+    /// Draws one target, weighted toward chords whose `attempts - exact` is
+    /// highest (design note, spec #9): a chord with no history draws like a
+    /// chord with a clean record, and a chord missed more than it has been
+    /// nailed draws more.
+    fn draw_target(&mut self) -> Option<DrillTarget> {
+        let vocabulary = self.vocabulary.as_ref()?;
+        let targets = vocabulary.targets();
+        if targets.is_empty() {
+            return None;
+        }
+        let stats = self
+            .drill_store
+            .as_ref()
+            .and_then(|store| store.stats().ok())
+            .unwrap_or_default();
+        let weights: Vec<u32> = targets
+            .iter()
+            .map(|target| {
+                let stat = stats.iter().find(|s| s.chord_key == target.key);
+                drill::weight_of(stat)
+            })
+            .collect();
+        drill::draw_weighted(&targets, &weights, &mut self.drill.rng).cloned()
+    }
+
+    /// Grades `sounding` against the current target, records the attempt,
+    /// and advances: the next target becomes current, and a fresh next
+    /// target is drawn.
+    fn grade_drill_attempt(&mut self, sounding: &SoundingSet) {
+        let Some(target) = self.drill.target.clone() else {
+            return;
+        };
+        let claimed = target.key.pitch_classes();
+        let played = sounding.pitch_classes();
+        let fit = DrillFit::measure(&claimed, &played);
+        let exact = fit.is_exact();
+        if let Some(store) = &self.drill_store
+            && let Err(error) = store.record(&target.key, exact, SystemTime::now())
+        {
+            self.status_message = Some(format!("Could not save drill stats — {error}"));
+        }
+        self.drill.last_grade = Some((target, fit));
+        self.drill.target = self.drill.next_target.take();
+        self.drill.next_target = self.draw_target();
+    }
+
+    /// Every chord with drill history, newest-attempts first, ties broken by
+    /// name — the stats view (spec #9: "attempts, exact count, and last
+    /// tried per chord").
+    fn drill_stat_rows(&self) -> Vec<DrillStatRow> {
+        let Some(store) = &self.drill_store else {
+            return Vec::new();
+        };
+        let Ok(stats) = store.stats() else {
+            return Vec::new();
+        };
+        let targets = self.vocabulary.as_ref().map(|v| v.targets());
+        let display_of = |key: &ChordKey| -> String {
+            targets
+                .as_ref()
+                .and_then(|ts| ts.iter().find(|t| &t.key == key))
+                .map(|t| t.display.clone())
+                .unwrap_or_else(|| key.raw().to_string())
+        };
+        let mut rows: Vec<DrillStatRow> = stats
+            .iter()
+            .filter(|s| s.attempts > 0)
+            .map(|s| DrillStatRow {
+                chord: display_of(&s.chord_key),
+                attempts: s.attempts,
+                exact: s.exact,
+                last_at: s.last_at,
+            })
+            .collect();
+        rows.sort_by(|a, b| {
+            b.attempts
+                .cmp(&a.attempts)
+                .then_with(|| a.chord.cmp(&b.chord))
+        });
+        rows
     }
 
     // MARK: - Reading the display
@@ -577,6 +756,21 @@ impl AppModel {
         };
         let groups = notes::filter_groups(self.note_groups.clone(), &self.search_text);
         let groups = notes::sort_groups(groups, self.notes_sort);
+        let drill = DrillFrame {
+            active: self.drill.active,
+            target: self.drill.target.as_ref().map(|t| t.display.clone()),
+            next_target: self.drill.next_target.as_ref().map(|t| t.display.clone()),
+            grade: self
+                .drill
+                .last_grade
+                .as_ref()
+                .map(|(_, fit)| fit.tier_name().to_string()),
+            grade_note: self.drill.last_grade.as_ref().and_then(|(_, fit)| {
+                let note = fit.note();
+                if note.is_empty() { None } else { Some(note) }
+            }),
+            stats: self.drill_stat_rows(),
+        };
         Frame {
             screen: self.screen,
             banner: self.banner.clone(),
@@ -607,6 +801,7 @@ impl AppModel {
             search: self.search_text.clone(),
             notes_sort: self.notes_sort,
             editing: self.editing_note_id.is_some(),
+            drill,
         }
     }
 

@@ -9,6 +9,7 @@ pub mod chord_grammar;
 pub mod chord_ranking;
 pub mod note_spelling;
 pub mod quality_catalog;
+pub mod vocabulary;
 
 pub use chord_engine::NamingEngine;
 pub use chord_grammar::{
@@ -16,3 +17,4 @@ pub use chord_grammar::{
     TriadQuality,
 };
 pub use note_spelling::{NoteLetter, NoteSpelling};
+pub use vocabulary::EngineVocabulary;
