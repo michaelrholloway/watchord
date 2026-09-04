@@ -22,23 +22,23 @@
  ANNOTATIONS
 
  INVERSION root   SLASH —   VOICING close   SPAN 9   ROOTLESS no   DOUBLINGS —
- UPPER STRUCTURE Am triad over C6   TREBLE C●C3 E●E3 G●G3 A●A3   BASS —
+ UPPER STRUCTURE Am triad over C6
+ TREBLE
+   --
+
+   --
+
+   --
+      ●   A3
+   -- ●   G3
+
+   -- ●   E3
+
+   -- ●   C3
+ BASS    —
  NOTES 2
    try it with the 9 on top                                                                                      delete
    sounds like the Rhodes on Voodoo                                                                              delete
-
-
-
-
-
-
-
-
-
-
-
-
-
 
  DRAFT          add a note…
  TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT

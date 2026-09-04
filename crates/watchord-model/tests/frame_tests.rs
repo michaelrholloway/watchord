@@ -130,11 +130,12 @@ fn the_wire_shape_is_the_value_not_the_struct() {
 
 #[test]
 fn a_frame_written_before_annotations_exist_still_reads() {
-    // A frame written before the `annotations` key existed at all has no such
-    // key in its JSON. `#[serde(default)]` must fill it with the empty
-    // `Annotations`, and every other field must come back untouched.
-    let model = c6_model(vec![SoundingSet::new([60, 64, 67, 69])]);
-    let frame = model.frame();
+    // Idle: no headline, so `watchord-theory::annotate` — and every part's own
+    // annotation fields — genuinely produce the empty `Annotations{}` a frame
+    // written before any of them existed would have carried, so removing the
+    // whole key and letting `#[serde(default)]` refill it round-trips exactly.
+    let idle = c6_model(vec![]);
+    let frame = idle.frame();
     let mut value: serde_json::Value =
         serde_json::from_str(&serde_json::to_string(&frame).expect("serialises"))
             .expect("parses to a Value");
@@ -148,9 +149,22 @@ fn a_frame_written_before_annotations_exist_still_reads() {
     );
     let without = serde_json::to_string(&value).expect("re-serialises");
     let back: Frame = serde_json::from_str(&without).expect("parses without annotations");
-    let mut expected = frame;
-    expected.annotations = watchord_model::Annotations::default();
-    assert_eq!(back, expected);
+    assert_eq!(back, frame);
+}
+
+#[test]
+fn an_idle_frame_round_trips_through_json_to_an_equal_value() {
+    // `ChordKey::empty()`'s raw form is `""`, and `ChordKey`'s `Deserialize`
+    // used to reject the empty string outright — so an idle `Frame` (whose
+    // `key` is `ChordKey::empty()`) could serialise but never parse back.
+    // Fixed in `watchord-core`'s `ChordKey::parse`; this is the frame-level
+    // proof.
+    let idle = c6_model(vec![]);
+    let frame = idle.frame();
+    assert!(frame.key.is_empty(), "the case this guards: an idle key");
+    let line = serde_json::to_string(&frame).expect("serialises");
+    let back: Frame = serde_json::from_str(&line).expect("an idle frame parses back");
+    assert_eq!(back, frame);
 }
 
 #[test]

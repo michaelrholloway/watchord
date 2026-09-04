@@ -171,7 +171,11 @@ pub struct Frame {
     pub declined: Option<String>,
     /// The keys as note names: `C3  E3  G3  A3`. Empty when nothing sounds.
     pub keys: String,
-    /// The sounding set's identity. Empty when nothing is displayed.
+    /// The sounding set's identity. Empty when nothing is displayed — a
+    /// legitimate `""`, unlike everywhere else `ChordKey` appears (see
+    /// `ChordKey::parse`'s doc comment), so this field alone decodes through
+    /// `deserialize_key_or_empty` rather than `ChordKey`'s own `Deserialize`.
+    #[serde(deserialize_with = "watchord_core::deserialize_key_or_empty")]
     pub key: ChordKey,
     /// The sounding MIDI notes.
     pub sounding: SoundingSet,

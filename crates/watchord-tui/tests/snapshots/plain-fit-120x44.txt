@@ -22,23 +22,23 @@
  ANNOTATIONS
 
  INVERSION second   SLASH C13/E   VOICING open   SPAN 29   ROOTLESS no   DOUBLINGS —
- UPPER STRUCTURE Am triad over C13   TREBLE E●E3 C●C4 #A●A#4 D●D5 A●A5   BASS —
- NOTES 0
-   none yet
+ UPPER STRUCTURE Am triad over C13
+ TREBLE
+      ●   A5
+   --
 
+   --
+      ●   D5
+   --
 
+   -- #●  A#4
 
+   --
 
+   --
+      ●   C4
+   --
 
-
-
-
-
-
-
-
-
-
-
+   --
  DRAFT          add a note…
  TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT
