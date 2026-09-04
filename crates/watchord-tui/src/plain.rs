@@ -29,7 +29,7 @@ use crate::when;
 const ABSENT: &str = "—";
 
 /// The one-line key reference at the foot of every screen.
-const KEYS_HELP: &str = "tab screen · ↑↓ select · d delete · enter save · q quit";
+const KEYS_HELP: &str = "tab screen · ↑↓ select · ←→ history · d delete · e export · ctrl-e export json · enter save · q quit";
 
 /// The mark before the selected row.
 const SELECTED: &str = "> ";
@@ -73,6 +73,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
         Screen::NowPlaying => {
             readings(frame, ui, &mut page, &mut hits);
             annotations(frame, &mut page);
+            history_block(frame, &mut page);
             notes(frame, ui, &mut page, &mut hits);
             note_field(frame, field_row, &mut page, &mut hits)
         }
@@ -329,6 +330,44 @@ fn annotations(frame: &Frame, page: &mut Page) {
     };
     page.line("annotations", value);
     page.skip();
+}
+
+/// The history strip (oldest first, newest last, `CONTEXT.md`), the `HISTORY
+/// n/64` plate while stepped, and the voice-leading line for whatever is
+/// currently on screen — live, or the entry stepped to. Kept to two rows plus
+/// a blank, matching `annotations`' footprint, so it does not push a short
+/// terminal's notes off the page: the strip is one line, entries separated by
+/// spaces, clipped at the right edge like every other single-line row here.
+fn history_block(frame: &Frame, page: &mut Page) {
+    let plate = match frame.history_step {
+        Some(step) => format!("  HISTORY {}/{}", step.index, step.total),
+        None => String::new(),
+    };
+    let strip = if frame.history.is_empty() {
+        "none yet".to_string()
+    } else {
+        frame
+            .history
+            .iter()
+            .map(|entry| match entry.seconds_since_previous {
+                Some(seconds) => format!("{}({seconds}s)", entry.name),
+                None => entry.name.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    page.text(&format!("HISTORY {}{plate}  {strip}", frame.history.len()));
+    let voice_leading = frame
+        .displayed_history_entry()
+        .and_then(|entry| entry.voice_leading.as_ref());
+    let value = match voice_leading {
+        Some(vl) => format!(
+            "{} semitones · {} common tones kept · {} largest move",
+            vl.total_semitones, vl.common_tones_kept, vl.largest_move
+        ),
+        None => ABSENT.to_string(),
+    };
+    page.line("voice leading", &value);
 }
 
 /// The notes on the displayed chord, newest first, a `delete` on each row.

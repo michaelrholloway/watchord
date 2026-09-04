@@ -186,6 +186,37 @@ pub fn render(frame: &Frame) -> String {
             ""
         }
     ));
+    lines.push(format!(
+        "history: {} entries{}",
+        frame.history.len(),
+        match frame.history_step {
+            Some(step) => format!(" · stepped {}/{}", step.index, step.total),
+            None => " · live".to_string(),
+        }
+    ));
+    for entry in &frame.history {
+        let since = entry
+            .seconds_since_previous
+            .map(|s| format!("{s}s"))
+            .unwrap_or_else(|| ABSENT.to_string());
+        lines.push(format!(
+            "history entry: {} · {since} since the one before it",
+            entry.name
+        ));
+    }
+    lines.push(format!(
+        "voice leading: {}",
+        match frame
+            .displayed_history_entry()
+            .and_then(|entry| entry.voice_leading.as_ref())
+        {
+            Some(vl) => format!(
+                "{} semitones · {} common tones kept · {} largest move",
+                vl.total_semitones, vl.common_tones_kept, vl.largest_move
+            ),
+            None => ABSENT.to_string(),
+        }
+    ));
     for note in &frame.notes {
         lines.push(format!(
             "note: {} (written as {})",
@@ -210,4 +241,55 @@ pub fn render(frame: &Frame) -> String {
     }
     lines.push(String::new());
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    //! Ticket 12, AGENT CHECKS claim 5: `--print` and `--json` carry the
+    //! history and voice-leading labels.
+
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use watchord_core::SoundingSet;
+    use watchord_model::AppModel;
+    use watchord_model::fakes::{InMemoryNoteStore, ScriptedSoundingSetSource, StubChordNaming};
+
+    use super::*;
+
+    fn model_with_two_chords() -> AppModel {
+        let script = vec![
+            SoundingSet::new([60, 64, 67, 69]), // C6, declined by the stub — fine, still a history entry
+            SoundingSet::new([53, 57, 60]),
+        ];
+        let mut model = AppModel::new(
+            Arc::new(StubChordNaming::new()),
+            Box::new(ScriptedSoundingSetSource::new(script)),
+            Arc::new(InMemoryNoteStore::default()),
+        );
+        model.start();
+        while model.wait(Duration::from_millis(50)) {}
+        model
+    }
+
+    #[test]
+    fn print_lines_carry_the_history_and_voice_leading_labels() {
+        let model = model_with_two_chords();
+        let text = render(&model.frame());
+        assert!(text.contains("history: 2 entries · live"), "{text}");
+        assert!(text.contains("history entry:"), "{text}");
+        assert!(text.contains("voice leading:"), "{text}");
+        // The control: a label nothing emits must not be found by accident.
+        assert!(!text.contains("ZZZ_NOT_A_LABEL"), "{text}");
+    }
+
+    #[test]
+    fn json_lines_carry_the_history_field() {
+        let model = model_with_two_chords();
+        let line = json_line(&model.frame());
+        assert!(line.contains("\"history\":["), "{line}");
+        assert!(line.contains("\"voiceLeading\""), "{line}");
+        let parsed: Frame = serde_json::from_str(line.trim_end()).expect("parses back");
+        assert_eq!(parsed.history.len(), 2);
+    }
 }

@@ -21,6 +21,8 @@
 
  ANNOTATIONS    none yet
 
+ HISTORY 1  C6
+ VOICE LEADING  —
  NOTES 2
    try it with the 9 on top                                                                                      delete
    sounds like the Rhodes on Voodoo                                                                              delete
@@ -54,7 +56,5 @@
 
 
 
-
-
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DELETE · E EXPORT · CTRL-E EXPORT JSON · ENTER SAVE · Q QUIT

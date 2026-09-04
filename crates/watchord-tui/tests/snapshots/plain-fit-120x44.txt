@@ -21,6 +21,8 @@
 
  ANNOTATIONS    none yet
 
+ HISTORY 1  C13/E
+ VOICE LEADING  —
  NOTES 0
    none yet
 
@@ -38,7 +40,5 @@
 
 
 
-
-
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DELETE · E EXPORT · CTRL-E EXPORT JSON · ENTER SAVE · Q QUIT

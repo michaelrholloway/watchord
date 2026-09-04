@@ -9,7 +9,8 @@
 
 use std::io::{self, Stdout, Write};
 use std::panic;
-use std::time::Duration;
+use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
@@ -21,8 +22,9 @@ use crossterm::terminal::{
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use watchord_model::{AppModel, Screen};
+use watchord_model::{AppModel, Frame, Screen};
 
+use crate::export;
 use crate::screens::{self, Hits, ScrollTarget, UiState};
 use crate::{Skin, plain};
 
@@ -86,6 +88,14 @@ enum Action {
     Commit,
     Backspace,
     Type(char),
+    /// Steps the display one entry further into the past.
+    StepHistoryBack,
+    /// Steps the display one entry back toward now.
+    StepHistoryForward,
+    /// Writes the session as markdown.
+    ExportMarkdown,
+    /// Writes the session as JSON lines.
+    ExportJson,
     Nothing,
 }
 
@@ -94,6 +104,11 @@ enum Action {
 /// The field takes every printable key, so the two letter commands only fire
 /// when the field is empty: `q` quits and `d` deletes the selected note. Ctrl-C
 /// always quits.
+///
+/// Two keys not already bound (tab, arrows, `d`, enter, `q`, mouse) step the
+/// history: `←` back, `→` forward — non-printable, so they need no
+/// draft-is-empty guard the way `q`/`d`/`e` do. `e` writes the session as
+/// markdown; Ctrl-`e` writes it as JSON lines — ticket 12.
 fn action_for(key: KeyEvent, draft_is_empty: bool, has_selection: bool) -> Action {
     if key.kind == KeyEventKind::Release {
         return Action::Nothing;
@@ -101,12 +116,16 @@ fn action_for(key: KeyEvent, draft_is_empty: bool, has_selection: bool) -> Actio
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
         KeyCode::Char('c') if ctrl => Action::Quit,
+        KeyCode::Char('e') if ctrl => Action::ExportJson,
         KeyCode::Char('q') if draft_is_empty => Action::Quit,
         KeyCode::Char('d') if draft_is_empty && has_selection => Action::DeleteSelected,
+        KeyCode::Char('e') if draft_is_empty => Action::ExportMarkdown,
         KeyCode::Tab => Action::NextScreen,
         KeyCode::BackTab => Action::PreviousScreen,
         KeyCode::Up => Action::SelectUp,
         KeyCode::Down => Action::SelectDown,
+        KeyCode::Left => Action::StepHistoryBack,
+        KeyCode::Right => Action::StepHistoryForward,
         KeyCode::Esc => Action::ClearSelection,
         KeyCode::Enter => Action::Commit,
         KeyCode::Backspace => Action::Backspace,
@@ -204,9 +223,32 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
             model.draft_note_text.pop();
         }
         Action::Type(c) => model.draft_note_text.push(c),
+        Action::StepHistoryBack => model.step_history_back(),
+        Action::StepHistoryForward => model.step_history_forward(),
+        Action::ExportMarkdown => run_export(model, export::write_markdown),
+        Action::ExportJson => run_export(model, export::write_json_lines),
         Action::Nothing => {}
     }
     true
+}
+
+/// Resolves the real sessions directory, writes with `write`, and reports the
+/// outcome on the model's error row — the same row a failed save uses.
+fn run_export(
+    model: &mut AppModel,
+    write: fn(&Frame, &Path, SystemTime) -> io::Result<std::path::PathBuf>,
+) {
+    let Some(directory) = export::sessions_directory() else {
+        model.set_status(Some(
+            "could not export — no home directory on this machine".to_string(),
+        ));
+        return;
+    };
+    let frame = model.frame();
+    match write(&frame, &directory, SystemTime::now()) {
+        Ok(path) => model.set_status(Some(format!("exported to {}", path.display()))),
+        Err(error) => model.set_status(Some(format!("could not export — {error}"))),
+    }
 }
 
 /// Draws one frame of `skin`. Returns what the mouse can hit in it.
