@@ -16,7 +16,7 @@ use watchord_core::{
     SpellingOrigin,
 };
 
-use crate::{NoteGroup, Screen};
+use crate::{NoteGroup, NotesSort, Screen};
 
 /// What the STATE plate reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -158,13 +158,21 @@ pub struct Frame {
     pub notes_total: usize,
     /// The text in the note field.
     pub draft: String,
+    /// The search query on All Notes, applied to `groups` live as typed.
+    /// Spec #9 (ticket #15).
+    pub search: String,
+    /// Which of the three orders `groups` is sorted by.
+    pub notes_sort: NotesSort,
+    /// True when the note field is editing an existing note rather than
+    /// drafting a new one.
+    pub editing: bool,
 }
 
 impl Frame {
     /// Every label a renderer must emit, lowercase. A skin writes them in
     /// UPPERCASE, `--print` writes them as they are. A test greps each plain
     /// snapshot and the print output for each one.
-    pub const LABELS: [&'static str; 26] = [
+    pub const LABELS: [&'static str; 30] = [
         "screen",
         "banner",
         "status",
@@ -191,10 +199,14 @@ impl Frame {
         "draft",
         "group",
         "written as",
+        "editing",
+        "search",
+        "sort",
+        "tags",
     ];
 
     /// The labels the Now Playing screen carries: everything but the groups.
-    pub const NOW_PLAYING_LABELS: [&'static str; 24] = [
+    pub const NOW_PLAYING_LABELS: [&'static str; 25] = [
         "screen",
         "banner",
         "status",
@@ -219,10 +231,11 @@ impl Frame {
         "note",
         "notes total",
         "draft",
+        "editing",
     ];
 
     /// The labels the All Notes screen carries: the head block and the groups.
-    pub const ALL_NOTES_LABELS: [&'static str; 18] = [
+    pub const ALL_NOTES_LABELS: [&'static str; 21] = [
         "screen",
         "banner",
         "status",
@@ -241,6 +254,9 @@ impl Frame {
         "note",
         "written as",
         "notes total",
+        "search",
+        "sort",
+        "tags",
     ];
 
     /// True when the keys are up and the display is holding the last chord.
