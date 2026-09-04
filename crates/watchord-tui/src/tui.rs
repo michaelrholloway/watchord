@@ -106,6 +106,10 @@ enum Action {
     SettleDown,
     /// `+`: widens the settle window by one step.
     SettleUp,
+    /// `k`: steps the key context's tonic up a semitone (ticket #16).
+    CycleKeyTonic,
+    /// `m`: flips the key context's mode, major/minor (ticket #16).
+    ToggleKeyMode,
     Nothing,
 }
 
@@ -150,6 +154,8 @@ fn action_for(
         KeyCode::Char('i') if active_field_is_empty => Action::ToggleInputPicker,
         KeyCode::Char('-') if active_field_is_empty => Action::SettleDown,
         KeyCode::Char('+') if active_field_is_empty => Action::SettleUp,
+        KeyCode::Char('k') if active_field_is_empty => Action::CycleKeyTonic,
+        KeyCode::Char('m') if active_field_is_empty => Action::ToggleKeyMode,
         KeyCode::Tab => Action::NextScreen,
         KeyCode::BackTab => Action::PreviousScreen,
         KeyCode::Up => Action::SelectUp,
@@ -299,6 +305,8 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
         Action::PickerClose => ui.input_picker_open = false,
         Action::SettleDown => model.decrease_settle(),
         Action::SettleUp => model.increase_settle(),
+        Action::CycleKeyTonic => model.cycle_key_tonic(),
+        Action::ToggleKeyMode => model.toggle_key_mode(),
         Action::Nothing => {}
     }
     true

@@ -261,14 +261,21 @@ fn head(frame: &Frame, page: &mut Page, hits: &mut Hits) {
 /// The three pedal plates, the settle plate, and the arpeggio plate — its own
 /// fn, called from one line in `draw_into`, so four parts editing `head`
 /// merge cleanly.
+///
+/// The KEY CONTEXT plate (ticket #16) rides on this same row rather than
+/// taking a row of its own: the plain skin's floor is 30 rows (spec #9), and
+/// every part sharing this run adds at least one plate — a row spent here is
+/// a row `notes()` cannot draw at that floor. `key_context_word` is still its
+/// own fn, so a merge only touches this one call site.
 fn pedals(frame: &Frame, page: &mut Page) {
     page.text(&format!(
-        "SUSTAIN {}   SOSTENUTO {}   SOFT {}   SETTLE {} ms   ARPEGGIO {}",
+        "SUSTAIN {}   SOSTENUTO {}   SOFT {}   SETTLE {} ms   ARPEGGIO {}   {}",
         pedal_word(frame.sustain),
         pedal_word(frame.sostenuto),
         pedal_word(frame.soft),
         frame.settle_ms,
         mode_word(frame.arpeggio),
+        key_context_word(frame),
     ));
 }
 
@@ -278,6 +285,12 @@ fn pedal_word(down: bool) -> &'static str {
 
 fn mode_word(on: bool) -> &'static str {
     if on { "ON" } else { "OFF" }
+}
+
+/// `KEY CONTEXT C major` or `KEY CONTEXT —` (ticket #16).
+fn key_context_word(frame: &Frame) -> String {
+    let label = frame.key_context.as_ref().map(|key| key.label());
+    format!("KEY CONTEXT {}", or_absent(label.as_deref()))
 }
 
 /// The input picker: `i` opens it, ↑↓ highlight, enter chooses, esc closes.
@@ -326,6 +339,9 @@ const FIT_WIDTH: usize = 20;
 const SCORE_WIDTH: usize = 6;
 const ROOT_WIDTH: usize = 5;
 const CLAIMED_WIDTH: usize = 22;
+const NUMERAL_WIDTH: usize = 10;
+const NASHVILLE_WIDTH: usize = 10;
+const FUNCTION_WIDTH: usize = 13;
 
 fn reading_row(rank: usize, reading: &FrameReading) -> String {
     let name = match &reading.approximation {
@@ -337,7 +353,7 @@ fn reading_row(rank: usize, reading: &FrameReading) -> String {
         None => reading.fit_name().to_string(),
     };
     format!(
-        "{}{}{}{}{}{}{}{}",
+        "{}{}{}{}{}{}{}{}{}{}{}",
         UNSELECTED,
         cell(&rank.to_string(), RANK_WIDTH),
         cell(&name, NAME_WIDTH),
@@ -346,6 +362,12 @@ fn reading_row(rank: usize, reading: &FrameReading) -> String {
         cell(&reading.score.to_string(), SCORE_WIDTH),
         cell(reading.root_name(), ROOT_WIDTH),
         cell(&reading.claimed_row(), CLAIMED_WIDTH),
+        cell(or_absent(reading.numeral.as_deref()), NUMERAL_WIDTH),
+        cell(or_absent(reading.nashville.as_deref()), NASHVILLE_WIDTH),
+        cell(
+            or_absent(reading.function.map(|f| f.label())),
+            FUNCTION_WIDTH
+        ),
     ) + &reading.spoken
 }
 
@@ -359,7 +381,7 @@ fn readings(frame: &Frame, ui: &UiState, page: &mut Page, hits: &mut Hits) {
         frame.alternates.len()
     ));
     page.text(&format!(
-        "{}{}{}{}{}{}{}{}SPOKEN",
+        "{}{}{}{}{}{}{}{}{}{}{}SPOKEN",
         UNSELECTED,
         cell("RANK", RANK_WIDTH),
         cell("NAME", NAME_WIDTH),
@@ -368,6 +390,9 @@ fn readings(frame: &Frame, ui: &UiState, page: &mut Page, hits: &mut Hits) {
         cell("SCORE", SCORE_WIDTH),
         cell("ROOT", ROOT_WIDTH),
         cell("CLAIMED", CLAIMED_WIDTH),
+        cell("NUMERAL", NUMERAL_WIDTH),
+        cell("NASHVILLE", NASHVILLE_WIDTH),
+        cell("FUNCTION", FUNCTION_WIDTH),
     ));
     let from = page.top;
     if all.is_empty() {

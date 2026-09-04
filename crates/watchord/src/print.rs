@@ -176,6 +176,11 @@ pub fn render(frame: &Frame) -> String {
         "sounding: {}",
         or_absent(Some(frame.sounding_row().as_str()))
     ));
+    let key_context_label = frame.key_context.as_ref().map(|key| key.label());
+    lines.push(format!(
+        "key context: {}",
+        or_absent(key_context_label.as_deref())
+    ));
     for (index, reading) in frame.readings().iter().enumerate() {
         let label = if index == 0 { "reading" } else { "alternate" };
         let mark = reading
@@ -189,7 +194,7 @@ pub fn render(frame: &Frame) -> String {
             .map(|d| format!(" {d}"))
             .unwrap_or_default();
         lines.push(format!(
-            "{label}: {}{mark} · rank {} · origin {} · fit {}{detail} · score {} · root {} · claimed {} · spoken {}",
+            "{label}: {}{mark} · rank {} · origin {} · fit {}{detail} · score {} · root {} · claimed {} · spoken {} · numeral {} · nashville {} · function {}",
             reading.name,
             index + 1,
             reading.origin.raw_value(),
@@ -198,6 +203,9 @@ pub fn render(frame: &Frame) -> String {
             reading.root_name(),
             reading.claimed_row(),
             reading.spoken,
+            or_absent(reading.numeral.as_deref()),
+            or_absent(reading.nashville.as_deref()),
+            or_absent(reading.function.map(|f| f.label())),
         ));
     }
     lines.push(format!(

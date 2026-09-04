@@ -4,7 +4,7 @@
  STATUS         —
  SCREEN          Now Playing    [All Notes]
 
- SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF   KEY CONTEXT —
  PICKER   press i to choose an input
  HEADLINE       C6
  APPROXIMATION  —

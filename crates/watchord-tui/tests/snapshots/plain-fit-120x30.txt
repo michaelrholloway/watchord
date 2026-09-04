@@ -4,7 +4,7 @@
  STATUS         —
  SCREEN         [Now Playing]    All Notes
 
- SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF   KEY CONTEXT —
  PICKER   press i to choose an input
  HEADLINE       C13/E
  APPROXIMATION  —
@@ -16,10 +16,10 @@
  SOUNDING       64 72 82 86 93
 
  READINGS 3 · HEADLINE 1 · ALTERNATES 2
-   RANK NAME          ORIGIN     FIT                 SCORE ROOT CLAIMED               SPOKEN
-   1    C13/E         headline   missing ·no5 ·no11  100   C    C D E F G A A#        C major, minor 7, 13
-   2    Cm7/E ≈       reRooted   nearest             90    C    C D# G A#             C minor 7
-   3    Am7/E         reRooted   exact               89    A    C D E A A#            A minor 7
+   RANK NAME          ORIGIN     FIT                 SCORE ROOT CLAIMED               NUMERAL   NASHVILLE FUNCTION
+   1    C13/E         headline   missing ·no5 ·no11  100   C    C D E F G A A#        —         —         —
+   2    Cm7/E ≈       reRooted   nearest             90    C    C D# G A#             —         —         —
+   3    Am7/E         reRooted   exact               89    A    C D E A A#            —         —         —
 
  ANNOTATIONS    none yet
 
