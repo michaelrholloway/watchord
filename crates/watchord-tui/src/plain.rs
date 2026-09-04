@@ -16,10 +16,13 @@
 //! The mouse and every key work as they do in PUSH: this module fills the same
 //! [`Hits`], and [`crate::tui`] reads them the same way.
 
+use std::collections::BTreeSet;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use unicode_width::UnicodeWidthStr;
+use watchord_model::notes::tags_of;
 use watchord_model::{Frame, FrameReading, Screen};
 
 use crate::screens::{Drawn, Hits, ScrollTarget, UiState};
@@ -29,7 +32,13 @@ use crate::when;
 const ABSENT: &str = "—";
 
 /// The one-line key reference at the foot of every screen.
-const KEYS_HELP: &str = "tab screen · ↑↓ select · d delete · enter save · q quit";
+const KEYS_HELP: &str = "tab screen · ↑↓ select · d delete · e edit · s sort · shift-enter line break · enter save · q quit";
+
+/// A note's text on one row: an embedded line break would otherwise split the
+/// row, so it is shown as a visible mark instead.
+fn single_line(text: &str) -> String {
+    text.replace('\n', " ⏎ ")
+}
 
 /// The mark before the selected row.
 const SELECTED: &str = "> ";
@@ -61,7 +70,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
     // The foot first, so a short terminal never clips it.
     let help_row = page.take_bottom();
     let field_row = page.take_bottom();
-    if frame.screen == Screen::NowPlaying && frame.note_target_key().is_none() {
+    if frame.screen == Screen::NowPlaying && frame.note_target_key().is_none() && !frame.editing {
         // Room for the hint under a disabled field.
         page.take_bottom();
     }
@@ -73,6 +82,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
         Screen::NowPlaying => {
             readings(frame, ui, &mut page, &mut hits);
             annotations(frame, &mut page);
+            editing(frame, &mut page);
             notes(frame, ui, &mut page, &mut hits);
             note_field(frame, field_row, &mut page, &mut hits)
         }
@@ -209,7 +219,13 @@ fn cell(text: &str, width: usize) -> String {
 /// The running head, the plates, the banner, the status, and the tabs.
 fn head(frame: &Frame, page: &mut Page, hits: &mut Hits) {
     let total = format!("NOTES TOTAL {}", frame.notes_total);
-    page.text(&format!("WATCHORD   {total}"));
+    // The displayed chord's own count, beside the total, only when it has notes.
+    let chord_notes = if frame.notes.is_empty() {
+        String::new()
+    } else {
+        format!("   NOTES {}", frame.notes.len())
+    };
+    page.text(&format!("WATCHORD   {total}{chord_notes}"));
     let inputs = if frame.inputs.is_empty() {
         ABSENT.to_string()
     } else {
@@ -331,6 +347,11 @@ fn annotations(frame: &Frame, page: &mut Page) {
     page.skip();
 }
 
+/// Whether the note field is editing an existing note or drafting a new one.
+fn editing(frame: &Frame, page: &mut Page) {
+    page.line("editing", if frame.editing { "yes" } else { ABSENT });
+}
+
 /// The notes on the displayed chord, newest first, a `delete` on each row.
 fn notes(frame: &Frame, ui: &UiState, page: &mut Page, hits: &mut Hits) {
     page.text(&format!("NOTES {}", frame.notes.len()));
@@ -351,7 +372,7 @@ fn notes(frame: &Frame, ui: &UiState, page: &mut Page, hits: &mut Hits) {
         } else {
             UNSELECTED
         };
-        let row = page.put(y, 0, &format!("{mark}{}", note.text));
+        let row = page.put(y, 0, &format!("{mark}{}", single_line(&note.text)));
         let delete = page.put(y, page.area.width.saturating_sub(6), "delete");
         hits.note_rows.push((
             Rect {
@@ -384,10 +405,12 @@ fn note_field(
     hits: &mut Hits,
 ) -> Option<(u16, u16)> {
     let y = row?;
-    let enabled = frame.note_target_key().is_some();
-    let label = "DRAFT";
+    // Editing an existing note needs no live chord to commit against.
+    let enabled = frame.note_target_key().is_some() || frame.editing;
+    let label = if frame.editing { "EDIT" } else { "DRAFT" };
+    let shown = single_line(&frame.draft);
     let text = if !frame.draft.is_empty() {
-        frame.draft.clone()
+        shown.clone()
     } else if enabled {
         "add a note…".to_string()
     } else {
@@ -399,8 +422,7 @@ fn note_field(
         ..rect
     });
     if enabled {
-        let x =
-            page.area.x + 15 + (frame.draft.width() as u16).min(page.area.width.saturating_sub(16));
+        let x = page.area.x + 15 + (shown.width() as u16).min(page.area.width.saturating_sub(16));
         Some((x, y))
     } else {
         None
@@ -419,6 +441,15 @@ fn groups(frame: &Frame, ui: &UiState, page: &mut Page, hits: &mut Hits) {
         frame.groups.len(),
         frame.notes_total
     ));
+    page.line(
+        "search",
+        if frame.search.is_empty() {
+            ABSENT
+        } else {
+            frame.search.as_str()
+        },
+    );
+    page.line("sort", frame.notes_sort.label());
     if frame.groups.is_empty() {
         page.text(&format!("{UNSELECTED}no notes yet"));
         return;
@@ -455,14 +486,24 @@ fn groups(frame: &Frame, ui: &UiState, page: &mut Page, hits: &mut Hits) {
         let Some(y) = page.take() else { break };
         match row {
             Row::Group(group) => {
+                let tags: BTreeSet<String> = tags_of(group);
+                let tags_text = if tags.is_empty() {
+                    ABSENT.to_string()
+                } else {
+                    tags.iter()
+                        .map(|t| format!("#{t}"))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                };
                 page.put(
                     y,
                     0,
                     &format!(
-                        "GROUP {}   KEY {}   NOTES {}",
+                        "GROUP {}   KEY {}   NOTES {}   TAGS {}",
                         group.heading,
                         group.key.raw(),
-                        group.notes.len()
+                        group.notes.len(),
+                        tags_text,
                     ),
                 );
                 let Some(y) = page.take() else { break };
@@ -487,7 +528,7 @@ fn groups(frame: &Frame, ui: &UiState, page: &mut Page, hits: &mut Hits) {
                 let text = format!(
                     "{}{}{}{}",
                     mark,
-                    cell(&note.text, note_width),
+                    cell(&single_line(&note.text), note_width),
                     cell(&note.spelling_when_written, WRITTEN_AS_WIDTH),
                     cell(&when::format(note.created_at), WHEN_WIDTH),
                 );

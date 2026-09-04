@@ -21,10 +21,10 @@
 
  ANNOTATIONS    none yet
 
+ EDITING        —
  NOTES 0
    none yet
 
 
-
  DRAFT          add a note…
- TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT
+ TAB SCREEN · ↑↓ SELECT · D DELETE · E EDIT · S SORT · SHIFT-ENTER LINE BREAK · ENTER SAVE · Q QUIT
