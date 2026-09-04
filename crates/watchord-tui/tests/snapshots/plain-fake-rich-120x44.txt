@@ -1,0 +1,44 @@
+ WATCHORD   NOTES TOTAL 9   NOTES 3
+ INPUT fake   STATE held   INPUTS Yamaha P-125, Scarlett 18i20 USB   FILTER —
+ BANNER         fake input — a scripted session, no MIDI hardware is being read
+ STATUS         —
+ SCREEN         [Now Playing]    All Notes
+
+ SUSTAIN DOWN   SOSTENUTO UP   SOFT UP   SETTLE 80 ms   ARPEGGIO ON   KEY CONTEXT C major
+ PICKER   press i to choose an input
+ HEADLINE       C7#9
+ APPROXIMATION  —
+ SPOKEN         C dominant 7 sharp 9
+ FIT            —
+ DECLINED       —
+ KEYS           C1  E2  A#2  D#3  G3
+ KEY            0.3.4.7.10
+ SOUNDING       36 52 58 63 67
+
+ READINGS 2 · HEADLINE 1 · ALTERNATES 1
+   RANK NAME          ORIGIN     FIT                 SCORE ROOT CLAIMED               NUMERAL   NASHVILLE FUNCTION
+   1    C7#9          headline   exact               100   C    C D# E G A#           I7#9      17#9      tonic
+   2    Eb/C          reRooted   exact               90    D#   D# G A#               bIII      b3        chromatic
+
+ ANNOTATIONS
+ HISTORY 9  CΔ7 Am7(2s) Dm7(1s) G7(1s) Em7(3s) A7(1s) Dm9(2s) G13(1s) C7#9(2s)   VOICE LEADING 41st 0kept 19max
+ DRILL          on   TARGET Cm7   NEXT TARGET Am7   GRADE missing A · extra D# A#   DRILL STATS 5
+   CHORD         ATTEMPTS  EXACT   LAST
+   G7            7         4       YYYY-MM-DD HH:MM
+   Cm7           6         3       YYYY-MM-DD HH:MM
+   Am7           5         1       YYYY-MM-DD HH:MM
+   F             5         2       YYYY-MM-DD HH:MM
+   C             3         0       YYYY-MM-DD HH:MM
+ EDITING        —
+ INVERSION root   SLASH —   VOICING open   SPAN 31   ROOTLESS no   DOUBLINGS —
+ UPPER STRUCTURE D# triad over C7#9
+ TREBLE
+   --
+
+   --
+
+   --
+
+   -- ●   G3
+ DRAFT          add a note…
+ TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DEL · E EDIT · S SORT · P DRILL · X MD · ^X JSON · ⇧ENTER NL · ENTER · Q QUIT

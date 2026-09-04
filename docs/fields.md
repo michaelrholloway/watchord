@@ -8,10 +8,11 @@ fits, top down, and keeps the note field and the key line at the foot.
 
 Run it with `cargo run -- --skin plain`. The `--print` flag prints the same
 fields as headless labelled lines, instead of drawing a screen. The `--json`
-flag streams them as one JSON line per settled sounding set. Four flags play
-a scripted chord with no MIDI hardware attached: `--fake`, `--fake-released`,
-`--fake-fit`, and `--fake-nearest`. Each shows every field below with no
-keyboard needed.
+flag streams them as one JSON line per settled sounding set. Five flags play
+a scripted session with no MIDI hardware attached: `--fake`, `--fake-released`,
+`--fake-fit`, `--fake-nearest`, and `--fake-rich` — a nine-chord progression
+that leaves every region on this page populated at once, for a design
+screenshot. Each shows every field below with no keyboard needed.
 
 This reference follows the order the plain screen draws. First the head.
 Then the display, the readings table, the annotations, the staff, the notes,

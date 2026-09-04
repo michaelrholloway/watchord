@@ -788,7 +788,10 @@ impl AppModel {
     /// What the running head's input plate says. The device's own name when
     /// there is exactly one, a count when there are several, and `none` when
     /// there is nothing — which is the whole reason this reads a live set rather
-    /// than a build flag.
+    /// than a build flag. A banner-announced graph always reads `fake`, even
+    /// if it also attaches device names (`--fake-rich` does, so `INPUTS` can
+    /// show real names while `INPUT` still cannot be mistaken for a live
+    /// graph — `a_fake_graph_says_fake_whatever_is_attached`).
     pub fn input_label(&self) -> String {
         if self.banner.is_some() {
             return "fake".to_string();

@@ -151,6 +151,88 @@ fn drill_model() -> AppModel {
     model
 }
 
+/// `--fake-rich`: the same scripted nine-chord session the CLI flag builds,
+/// via `watchord_model::fakes::rich_demo` — see that function's doc comment
+/// for why it is built synchronously rather than through the channel-driven
+/// source. Every plain-skin region should carry something real.
+fn rich_model() -> AppModel {
+    let mut model = watchord_model::fakes::rich_demo(Screen::NowPlaying);
+    // The nine chords, the key context, the pedals and the drill grade are
+    // all already baked in synchronously (see `rich_demo`'s doc comment) —
+    // only the two attached device names still ride the normal async
+    // `connected_inputs` stream, so `start`/`wait` are needed once to drain
+    // that one message, the same as every other fake model in this file.
+    model.start();
+    while model.wait(Duration::from_millis(50)) {}
+    model
+}
+
+#[test]
+fn fake_rich_draws_every_region_at_60_rows() {
+    let model = rich_model();
+    let (rows, _) = render(&model.frame(), &UiState::default(), WIDTH, 60);
+    let text = text_of(&rows);
+    let what = format!("plain fake-rich at {WIDTH}x60");
+    assert_labels(&text, &now_playing_labels(60), &what);
+    assert_no_boxes(&text, &what);
+    assert!(text.contains("HEADLINE       C7#9"), "{text}");
+    assert!(text.contains("C dominant 7 sharp 9"), "{text}");
+    assert!(text.contains("KEY CONTEXT"), "{text}");
+    assert!(text.contains("C major"), "{text}");
+    assert!(text.contains("SUSTAIN DOWN"), "{text}");
+    assert!(text.contains("SOSTENUTO UP"), "{text}");
+    assert!(text.contains("SOFT UP"), "{text}");
+    assert!(text.contains("SETTLE 80 ms"), "{text}");
+    assert!(text.contains("ARPEGGIO ON"), "{text}");
+    // INPUT reads `fake`, not a device count: a banner-announced graph must
+    // never look like a real one (`a_fake_graph_says_fake_whatever_is_
+    // attached`, watchord-model). INPUTS still carries the real names.
+    assert!(text.contains("INPUT fake"), "{text}");
+    assert!(text.contains("Yamaha P-125"), "{text}");
+    assert!(text.contains("DRILL          on"), "{text}");
+    assert!(text.contains("Cm7"), "the drawn drill target:\n{text}");
+    assert!(text.contains("UPPER STRUCTURE"), "{text}");
+    assert!(text.contains("triad over C7#9"), "{text}");
+    assert!(text.contains("HISTORY 9"), "{text}");
+    assert!(text.contains("VOICE LEADING"), "{text}");
+    // `--fake-rich` stacks more above the note list than any other fixture —
+    // a two-row readings table and a five-row drill stats table both sit
+    // above it — so even at 60 rows the note *text* itself is not
+    // guaranteed to still be on screen (the same budget-squeeze class the
+    // 44-row test documents). `NOTES TOTAL`/`NOTES` on the WATCHORD line are
+    // unconditional and prove the notes plumbing reached the frame either
+    // way.
+    assert!(text.contains("NOTES TOTAL 9"), "{text}");
+    assert!(text.contains("NOTES 3"), "{text}");
+    assert_snapshot(&format!("plain-fake-rich-{WIDTH}x60"), &rows);
+}
+
+#[test]
+fn fake_rich_draws_what_fits_at_44_rows() {
+    let model = rich_model();
+    let (rows, _) = render(&model.frame(), &UiState::default(), WIDTH, 44);
+    let text = text_of(&rows);
+    let what = format!("plain fake-rich at {WIDTH}x44");
+    // `--fake-rich` carries far more than any other fake — a full readings
+    // table, five drill stat rows, three notes on the displayed chord — so
+    // at 44 rows the bass staff runs off the bottom the same way the notes
+    // table already does for `now_playing_draws_every_field_with_no_colour_
+    // and_no_boxes` (see that test's comment; COMMON.md's addendum 6 records
+    // the same squeeze). `bass` is dropped from the expected labels here for
+    // that reason, the same way `fit_shows_the_tier_and_the_detail_on_every_
+    // reading` drops it for its own wide voicing.
+    let labels: Vec<&str> = now_playing_labels(44)
+        .into_iter()
+        .filter(|&l| l != "bass")
+        .collect();
+    assert_labels(&text, &labels, &what);
+    assert_no_boxes(&text, &what);
+    assert!(text.contains("HEADLINE       C7#9"), "{text}");
+    assert!(text.contains("HISTORY 9"), "{text}");
+    assert!(text.contains("DRILL          on"), "{text}");
+    assert_snapshot(&format!("plain-fake-rich-{WIDTH}x44"), &rows);
+}
+
 fn at(unix: u64) -> std::time::SystemTime {
     UNIX_EPOCH + Duration::from_secs(unix)
 }

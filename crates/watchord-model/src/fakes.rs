@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use watchord_core::tuning;
 use watchord_core::{
@@ -595,6 +595,214 @@ impl DrillStoring for InMemoryDrillStore {
         row.last_at = Some(at);
         Ok(row.clone())
     }
+}
+
+// MARK: - RichDemo
+
+/// `watchord --fake-rich`: a scripted nine-chord session that leaves every
+/// region of the plain skin populated with realistic data, for a design
+/// screenshot. Built entirely synchronously — every chord goes in through
+/// [`AppModel::receive`] directly, never through the channel-driven source —
+/// because the scripted clock below needs an exact call order to hand out
+/// real, distinct gaps, and the pedal/drill calls after it must land only
+/// once every chord has already settled. Routing any of that through
+/// [`ScriptedSoundingSetSource`]'s three independent forwarding threads would
+/// race the pedals and the drill grading against whichever chord the channel
+/// happened to still be delivering (see `corrections.md`'s control-thread
+/// races) — a real risk this function sidesteps by never starting a thread.
+pub fn rich_demo(screen: crate::Screen) -> crate::AppModel {
+    let chords: [(&[u8], &str, &str); 9] = [
+        (&[60, 64, 67, 71], "CΔ7", "C major 7"),
+        (&[57, 60, 64, 67], "Am7", "A minor 7"),
+        (&[62, 65, 69, 72], "Dm7", "D minor 7"),
+        (&[55, 59, 62, 65], "G7", "G dominant 7"),
+        (&[52, 55, 59, 62], "Em7", "E minor 7"),
+        (&[57, 61, 64, 67], "A7", "A dominant 7"),
+        (&[50, 53, 57, 60, 64], "Dm9", "D minor 9"),
+        (&[55, 59, 62, 65, 76], "G13", "G dominant 13"),
+        // The Hendrix voicing: C E G Bb D#(Eb) — root, 3rd, 5th, b7, #9 — spans
+        // both staves and carries an Eb-major upper structure (G B♭ D#/Eb).
+        (&[36, 52, 58, 63, 67], "C7#9", "C dominant 7 sharp 9"),
+    ];
+
+    let naming = StubChordNaming::new();
+    let sets: Vec<SoundingSet> = chords
+        .iter()
+        .map(|(notes, display, spoken)| {
+            let set = SoundingSet::new(notes.iter().copied());
+            let alternates = if *display == "C7#9" {
+                vec![
+                    StubAlternate::new("Eb", SpellingOrigin::ReRooted, "Eb major")
+                        .with_fit(ChordFit::Exact, &[3, 7, 10]),
+                ]
+            } else {
+                Vec::new()
+            };
+            naming.stub(
+                &set,
+                StubChordNaming::naming(&set, display, spoken, alternates),
+            );
+            set
+        })
+        .collect();
+
+    // A scripted clock, one call per non-empty `receive()`, in order —
+    // real seconds between history entries rather than the near-zero gaps a
+    // headless loop draining a channel in microseconds would otherwise stamp.
+    let base = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let offsets = [0u64, 2, 3, 4, 7, 8, 10, 11, 13];
+    let times: Vec<SystemTime> = offsets
+        .iter()
+        .map(|&s| base + Duration::from_secs(s))
+        .collect();
+    let cursor = Arc::new(Mutex::new(0usize));
+    let clock: crate::Clock = Box::new(move || {
+        let mut i = lock(&cursor);
+        let t = times.get(*i).copied().unwrap_or_else(SystemTime::now);
+        *i += 1;
+        t
+    });
+
+    // Notes: three on the final chord (one with two tags, one two lines
+    // long), and six more spread over three earlier chords — nine notes,
+    // four groups, for All Notes.
+    let final_key = sets[8].key();
+    let store = InMemoryNoteStore::new(vec![
+        ChordNote::new(
+            new_id(),
+            final_key.clone(),
+            "C7#9",
+            "the Hendrix voicing, low and wide",
+            seconds_ago_at(300),
+        ),
+        ChordNote::new(
+            new_id(),
+            final_key.clone(),
+            "C7#9",
+            "two hands, sustain down\nlean into the #9 on top",
+            seconds_ago_at(180),
+        ),
+        ChordNote::new(
+            new_id(),
+            final_key,
+            "C7#9",
+            "great over a static vamp #hendrix #voicing",
+            seconds_ago_at(30),
+        ),
+        ChordNote::new(
+            new_id(),
+            sets[0].key(),
+            "CΔ7",
+            "the turnaround starts here",
+            seconds_ago_at(3600),
+        ),
+        ChordNote::new(
+            new_id(),
+            sets[0].key(),
+            "CΔ7",
+            "keep the 7th on top",
+            seconds_ago_at(3500),
+        ),
+        ChordNote::new(
+            new_id(),
+            sets[1].key(),
+            "Am7",
+            "relative minor, same notes as C6",
+            seconds_ago_at(2400),
+        ),
+        ChordNote::new(
+            new_id(),
+            sets[1].key(),
+            "Am7",
+            "try dropping the root an octave",
+            seconds_ago_at(2300),
+        ),
+        ChordNote::new(
+            new_id(),
+            sets[3].key(),
+            "G7",
+            "the dominant, resolves down a fifth",
+            seconds_ago_at(900),
+        ),
+        ChordNote::new(
+            new_id(),
+            sets[3].key(),
+            "G7",
+            "add the 13 for colour",
+            seconds_ago_at(800),
+        ),
+    ]);
+
+    // A five-chord vocabulary, matching `watchord`'s own demo set, and a
+    // drill store already seeded with a row per chord — so the one live
+    // grade below always updates one of these five rather than adding a
+    // sixth.
+    let vocabulary = FixedVocabulary::new(vec![
+        FixedVocabulary::target("C", &[0, 4, 7]),
+        FixedVocabulary::target("Am7", &[9, 0, 4, 7]),
+        FixedVocabulary::target("F", &[5, 9, 0]),
+        FixedVocabulary::target("Cm7", &[0, 3, 7, 10]),
+        FixedVocabulary::target("G7", &[7, 11, 2, 5]),
+    ]);
+    let drill_stats: Vec<DrillChordStat> = vocabulary
+        .targets()
+        .iter()
+        .enumerate()
+        .map(|(i, target)| DrillChordStat {
+            chord_key: target.key.clone(),
+            attempts: 3 + i as u32,
+            exact: i as u32,
+            last_at: Some(seconds_ago_at(600 + i as u64 * 60)),
+        })
+        .collect();
+    let drill_store = InMemoryDrillStore::new(drill_stats);
+
+    let source = ScriptedSoundingSetSource::default();
+    source.attach(&["Yamaha P-125", "Scarlett 18i20 USB"]);
+
+    let mut model =
+        crate::AppModel::with_clock(Arc::new(naming), Box::new(source), Arc::new(store), clock)
+            .with_drill(Arc::new(vocabulary), Arc::new(drill_store));
+    model.screen = screen;
+    model.announce("fake input — a scripted session, no MIDI hardware is being read");
+
+    // The whole progression, synchronously, in order — history and voice
+    // leading fall out of `receive()` on their own.
+    for set in &sets[..8] {
+        model.receive(set);
+    }
+    model.cycle_key_tonic(); // C major — the first press always sets it.
+    model.seed_drill_rng(7);
+    model.enter_drill();
+    model.receive(&sets[8]); // C7#9 — drill grades this attempt too.
+
+    // Pedals and settle, direct and synchronous — never through the async
+    // control channel, which would race the receives above (see the doc
+    // comment on this function).
+    model.apply_control(ControlEvent {
+        pedal: PedalKind::Sustain,
+        down: true,
+    });
+    model.apply_control(ControlEvent {
+        pedal: PedalKind::Sostenuto,
+        down: true,
+    }); // toggles arpeggio on
+    model.apply_control(ControlEvent {
+        pedal: PedalKind::Sostenuto,
+        down: false,
+    }); // sostenuto itself back up
+    model.increase_settle();
+    model.increase_settle();
+
+    model
+}
+
+fn new_id() -> String {
+    uuid::Uuid::new_v4().to_string().to_uppercase()
+}
+
+fn seconds_ago_at(seconds: u64) -> SystemTime {
+    crate::seconds_ago(seconds)
 }
 
 /// A lock whose poisoning is not a reason to stop: the guarded state is plain

@@ -16,7 +16,7 @@ use watchord_engine::{EngineVocabulary, NamingEngine};
 use watchord_midi::MidiSource;
 use watchord_model::fakes::{
     FixedVocabulary, InMemoryDrillStore, InMemoryNoteStore, ScriptedSoundingSetSource,
-    StubAlternate, StubChordNaming,
+    StubAlternate, StubChordNaming, rich_demo as build_rich_demo,
 };
 use watchord_model::{AppModel, Screen, seconds_ago};
 use watchord_store::{JsonDrillStore, JsonNotesStore};
@@ -29,6 +29,9 @@ pub struct LaunchArgs {
     pub fake_released: bool,
     pub fake_fit: bool,
     pub fake_nearest: bool,
+    /// A scripted nine-chord session with every plain-skin region populated
+    /// — for a design screenshot, never a claim about the real engine.
+    pub fake_rich: bool,
     pub all_notes: bool,
     /// `--input <name>`: only inputs whose name contains this.
     pub input: Option<String>,
@@ -56,6 +59,7 @@ impl LaunchArgs {
                 "--fake-released" => parsed.fake_released = true,
                 "--fake-fit" => parsed.fake_fit = true,
                 "--fake-nearest" => parsed.fake_nearest = true,
+                "--fake-rich" => parsed.fake_rich = true,
                 "--all-notes" => parsed.all_notes = true,
                 "--print" => parsed.print = true,
                 "--json" => parsed.json = true,
@@ -110,6 +114,12 @@ pub struct Composition {
     /// The concrete types behind the seams, by name, so a test can tell the
     /// real graph from a fake one without importing either.
     pub kinds: GraphKinds,
+    /// A model already fully built by a synchronous fake (`--fake-rich`),
+    /// bypassing the usual `naming`/`source`/`store` assembly because its
+    /// history needs a scripted clock and a strict call order no
+    /// channel-driven run could give it deterministically. `make_model`
+    /// returns this directly when set; `kinds` above still describes it.
+    pub prebuilt: Option<AppModel>,
 }
 
 /// The type names of a graph's three collaborators.
@@ -152,10 +162,14 @@ impl Composition {
             drill_store,
             banner: banner.map(str::to_string),
             screen,
+            prebuilt: None,
         }
     }
 
     pub fn make_model(self) -> AppModel {
+        if let Some(model) = self.prebuilt {
+            return model;
+        }
         let mut model = AppModel::new(self.naming, self.source, self.store)
             .with_drill(self.vocabulary, self.drill_store);
         model.screen = self.screen;
@@ -318,6 +332,26 @@ impl Composition {
         )
     }
 
+    /// A scripted nine-chord session — a real key context, both pedals, a
+    /// mid-session drill grade, and notes with tags and a multi-line entry —
+    /// so every region of the plain skin has something real in it for a
+    /// design screenshot. Built entirely synchronously in
+    /// [`watchord_model::fakes::rich_demo`]; see that function's doc comment
+    /// for why it never goes through the channel-driven source.
+    pub fn rich_demo(screen: Screen) -> Composition {
+        let mut graph = Self::assemble(
+            StubChordNaming::new(),
+            ScriptedSoundingSetSource::default(),
+            InMemoryNoteStore::default(),
+            Arc::new(FixedVocabulary::default()),
+            Arc::new(InMemoryDrillStore::default()),
+            Some("fake input — a scripted session, no MIDI hardware is being read"),
+            screen,
+        );
+        graph.prebuilt = Some(build_rich_demo(screen));
+        graph
+    }
+
     /// Chooses a graph from the parsed command line.
     ///
     /// - `--fake` — the demo graph, chord held.
@@ -325,6 +359,8 @@ impl Composition {
     /// - `--fake-fit` — a `Missing` headline over a slash bass, with a
     ///   `Nearest` alternate beneath it.
     /// - `--fake-nearest` — the same keys with a `Nearest` **headline**.
+    /// - `--fake-rich` — a scripted nine-chord session, every plain-skin
+    ///   region populated.
     /// - `--all-notes` — open on the All Notes screen.
     /// - `--input <name>` — live, on the inputs whose name contains `name`.
     pub fn for_launch(args: &LaunchArgs) -> Composition {
@@ -333,6 +369,9 @@ impl Composition {
         } else {
             Screen::NowPlaying
         };
+        if args.fake_rich {
+            return Self::rich_demo(screen);
+        }
         if args.fake_nearest {
             return Self::fit_demo(true);
         }
@@ -438,5 +477,46 @@ mod tests {
         assert_eq!(args.input.as_deref(), Some("field"));
         let (_, unknown) = LaunchArgs::parse(["--input".to_string()]);
         assert_eq!(unknown, ["--input needs a name"]);
+    }
+
+    /// `--fake-rich --print` carries a real, multi-entry history and a real
+    /// key-context numeral — the two claims a screenshot cannot make for
+    /// itself. `crate::print::render` is the exact function the CLI's
+    /// `--print` flag calls, so this is the same text a terminal would see.
+    #[test]
+    fn fake_rich_prints_a_real_history_and_a_real_numeral() {
+        let (args, unknown) = LaunchArgs::parse(["--fake-rich".to_string()]);
+        assert!(unknown.is_empty(), "{unknown:?}");
+        let graph = Composition::for_launch(&args);
+        assert_eq!(graph.kinds.naming, "StubChordNaming");
+        assert!(graph.banner.is_some());
+        let model = graph.make_model();
+        let text = crate::print::render(&model.frame());
+
+        assert!(
+            text.contains("history: 9 entries"),
+            "at least 8 history entries, carried as `history: `:\n{text}"
+        );
+        assert!(
+            model.frame().history.len() >= 8,
+            "the frame's own history is at least 8 long"
+        );
+        assert!(
+            text.contains("key context: C major"),
+            "a real key context, not —:\n{text}"
+        );
+        let numeral = model
+            .frame()
+            .headline
+            .as_ref()
+            .and_then(|h| h.numeral.clone());
+        assert!(
+            numeral.as_deref().is_some_and(|n| n != "—"),
+            "the headline's numeral is a real value, not the absent mark: {numeral:?}"
+        );
+        assert!(
+            text.contains(&format!("numeral {}", numeral.unwrap())),
+            "the same numeral appears in the reading line:\n{text}"
+        );
     }
 }
