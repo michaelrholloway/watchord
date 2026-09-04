@@ -136,17 +136,47 @@ impl FrameReading {
     }
 }
 
-/// The slot the theory crate fills: voicing, inversion, numeral, staff. Empty
-/// until a later ticket adds the first annotation. `#[serde(default)]` keeps a
-/// frame written before that ticket readable after it.
+/// The slot the theory crate fills: voicing, inversion, numeral, staff.
+/// `#[serde(default)]` keeps a frame written before a field existed readable
+/// after it — every part adds its own fields at the end.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Annotations {}
+pub struct Annotations {
+    /// Which claimed chord tone of the headline is in the bass. Ticket #11.
+    pub inversion: Option<watchord_theory::inversion::Inversion>,
+    /// The slash name, present only when the bass is a claimed tone other
+    /// than the root. Ticket #11.
+    pub slash: Option<String>,
+    /// Close, open, drop 2, drop 3 — plus span, rootless, and doublings.
+    /// Ticket #11.
+    pub voicing: Option<watchord_theory::voicing::Voicing>,
+    /// `"<triad> over <headline>"`, root ascending, not ranked. Ticket #11.
+    pub upper_structures: Vec<String>,
+    /// The current chord as staff positions, one entry per sounding note.
+    /// Ticket #11.
+    pub staff: Vec<watchord_theory::staff::StaffNote>,
+}
 
 impl Annotations {
     /// True while no annotation has been added.
     pub fn is_empty(&self) -> bool {
-        true
+        self.inversion.is_none()
+            && self.slash.is_none()
+            && self.voicing.is_none()
+            && self.upper_structures.is_empty()
+            && self.staff.is_empty()
+    }
+}
+
+impl From<watchord_theory::annotate::Theory> for Annotations {
+    fn from(theory: watchord_theory::annotate::Theory) -> Self {
+        Annotations {
+            inversion: theory.inversion,
+            slash: theory.slash,
+            voicing: theory.voicing,
+            upper_structures: theory.upper_structures,
+            staff: theory.staff,
+        }
     }
 }
 
@@ -275,7 +305,11 @@ pub struct Frame {
     pub declined: Option<String>,
     /// The keys as note names: `C3  E3  G3  A3`. Empty when nothing sounds.
     pub keys: String,
-    /// The sounding set's identity. Empty when nothing is displayed.
+    /// The sounding set's identity. Empty when nothing is displayed — a
+    /// legitimate `""`, unlike everywhere else `ChordKey` appears (see
+    /// `ChordKey::parse`'s doc comment), so this field alone decodes through
+    /// `deserialize_key_or_empty` rather than `ChordKey`'s own `Deserialize`.
+    #[serde(deserialize_with = "watchord_core::deserialize_key_or_empty")]
     pub key: ChordKey,
     /// The sounding MIDI notes.
     pub sounding: SoundingSet,
@@ -332,7 +366,7 @@ impl Frame {
     /// Every label a renderer must emit, lowercase. A skin writes them in
     /// UPPERCASE, `--print` writes them as they are. A test greps each plain
     /// snapshot and the print output for each one.
-    pub const LABELS: [&'static str; 46] = [
+    pub const LABELS: [&'static str; 55] = [
         "screen",
         "banner",
         "status",
@@ -354,6 +388,15 @@ impl Frame {
         "claimed",
         "alternate",
         "annotations",
+        "inversion",
+        "slash",
+        "voicing",
+        "span",
+        "rootless",
+        "doublings",
+        "upper structure",
+        "treble",
+        "bass",
         "history",
         "voice leading",
         "note",
@@ -382,7 +425,7 @@ impl Frame {
     ];
 
     /// The labels the Now Playing screen carries: everything but the groups.
-    pub const NOW_PLAYING_LABELS: [&'static str; 41] = [
+    pub const NOW_PLAYING_LABELS: [&'static str; 50] = [
         "screen",
         "banner",
         "status",
@@ -404,6 +447,15 @@ impl Frame {
         "claimed",
         "alternate",
         "annotations",
+        "inversion",
+        "slash",
+        "voicing",
+        "span",
+        "rootless",
+        "doublings",
+        "upper structure",
+        "treble",
+        "bass",
         "history",
         "voice leading",
         "note",

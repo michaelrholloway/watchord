@@ -17,6 +17,8 @@ mod sounding_set;
 pub mod tuning;
 
 pub use chord_key::ChordKey;
+#[cfg(feature = "serde")]
+pub use chord_key::deserialize_key_or_empty;
 pub use chord_note::ChordNote;
 pub use chord_reading::{ChordAnalysis, ChordFit, ChordReading, DeclineReason, SpellingOrigin};
 pub use display::{ChordRoot, NoteName, ReadingDisplay};

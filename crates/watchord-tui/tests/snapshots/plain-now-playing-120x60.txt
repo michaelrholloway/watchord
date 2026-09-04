@@ -21,28 +21,28 @@
    2    Am7/C         reRooted   exact               90    A    C E G A               —         —         —
    3    CΔ6           enharmonic exact               89    C    C E G A               —         —         —
 
- ANNOTATIONS    none yet
+ ANNOTATIONS
  HISTORY 1  C6   VOICE LEADING —
  DRILL          off   TARGET —   NEXT TARGET —   GRADE —   DRILL STATS 0
  EDITING        —
+ INVERSION root   SLASH —   VOICING close   SPAN 9   ROOTLESS no   DOUBLINGS —
+ UPPER STRUCTURE Am triad over C6
+ TREBLE
+   --
+
+   --
+
+   --
+      ●   A3
+   -- ●   G3
+
+   -- ●   E3
+
+   -- ●   C3
+ BASS    —
  NOTES 2
    try it with the 9 on top                                                                                      delete
    sounds like the Rhodes on Voodoo                                                                              delete
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

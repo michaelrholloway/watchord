@@ -25,12 +25,12 @@
    CHORD         ATTEMPTS  EXACT   LAST
    C             1         0       YYYY-MM-DD HH:MM
  EDITING        —
+ INVERSION —   SLASH —   VOICING —   SPAN —   ROOTLESS —   DOUBLINGS —
+ UPPER STRUCTURE —
+ TREBLE  —
+ BASS    —
  NOTES 0
    none yet
-
-
-
-
 
 
 

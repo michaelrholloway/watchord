@@ -25,6 +25,6 @@
    CHORD         ATTEMPTS  EXACT   LAST
    C             1         0       YYYY-MM-DD HH:MM
  EDITING        —
- NOTES 0
+ INVERSION —   SLASH —   VOICING —   SPAN —   ROOTLESS —   DOUBLINGS —
  DRAFT          add a note…
  TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DEL · E EDIT · S SORT · P DRILL · X MD · ^X JSON · ⇧ENTER NL · ENTER · Q QUIT

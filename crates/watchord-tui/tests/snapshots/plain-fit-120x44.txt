@@ -21,24 +21,24 @@
    2    Cm7/E ≈       reRooted   nearest             90    C    C D# G A#             —         —         —
    3    Am7/E         reRooted   exact               89    A    C D E A A#            —         —         —
 
- ANNOTATIONS    none yet
+ ANNOTATIONS
  HISTORY 1  C13/E   VOICE LEADING —
  DRILL          off   TARGET —   NEXT TARGET —   GRADE —   DRILL STATS 0
  EDITING        —
- NOTES 0
-   none yet
+ INVERSION second   SLASH C13/E   VOICING open   SPAN 29   ROOTLESS no   DOUBLINGS —
+ UPPER STRUCTURE Am triad over C13
+ TREBLE
+      ●   A5
+   --
 
+   --
+      ●   D5
+   --
 
+   -- #●  A#4
 
+   --
 
-
-
-
-
-
-
-
-
-
+   --
  DRAFT          add a note…
  TAB SCREEN · ↑↓ SELECT · ←→ HISTORY · D DEL · E EDIT · S SORT · P DRILL · X MD · ^X JSON · ⇧ENTER NL · ENTER · Q QUIT

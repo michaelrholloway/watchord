@@ -41,6 +41,17 @@ impl ChordKey {
     /// The check is deliberately "re-canonicalise and compare", not a list of
     /// individual rules. Comparing against the canonical rendering cannot miss a
     /// case, because it *is* the definition.
+    ///
+    /// The empty string is rejected here on purpose, and this is load-bearing
+    /// beyond this type: the store (`watchord-store`) reuses this exact method
+    /// to refuse ever attaching a note to the key of silence
+    /// (`if ChordKey::parse(key.raw()).is_none() { refuse }`), and it also
+    /// treats a stored note whose `chordKey` decoded to `""` as damaged and
+    /// skips it — a legitimately-written note is never keyed to silence, so an
+    /// empty key on disk can only be corruption. Loosening this here would
+    /// silently defeat both checks at once. A caller that legitimately needs
+    /// `""` to mean "nothing displayed" (an idle `Frame`'s `key`) special-cases
+    /// it at its own field, with its own `deserialize_with`, rather than here.
     pub fn parse(raw: &str) -> Option<Self> {
         if raw.is_empty() {
             return None;
@@ -123,4 +134,25 @@ impl<'de> serde::Deserialize<'de> for ChordKey {
             ))
         })
     }
+}
+
+/// A `deserialize_with` for exactly one field: `Frame::key`, whose `""` is a
+/// real, legitimate value — nothing is displayed — and not the corruption
+/// `ChordKey`'s own `Deserialize` (correctly) treats it as everywhere else
+/// (see `ChordKey::parse`'s doc comment). Every non-empty string still goes
+/// through the same validating parser.
+#[cfg(feature = "serde")]
+pub fn deserialize_key_or_empty<'de, D>(d: D) -> Result<ChordKey, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = <String as serde::Deserialize>::deserialize(d)?;
+    if raw.is_empty() {
+        return Ok(ChordKey::empty());
+    }
+    ChordKey::parse(&raw).ok_or_else(|| {
+        serde::de::Error::custom(format!(
+            "'{raw}' is not a canonical chord key (ascending, distinct, 0-11, dot-separated)"
+        ))
+    })
 }

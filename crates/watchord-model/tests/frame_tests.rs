@@ -70,7 +70,18 @@ fn the_frame_carries_what_the_screen_shows() {
     assert_eq!(frame.notes[0].text, "newer");
     assert_eq!(frame.groups.len(), 1);
     assert_eq!(frame.notes_total, 2);
-    assert!(frame.annotations.is_empty());
+    // watchord-theory (ticket #11) fills annotations for a real headline.
+    assert!(!frame.annotations.is_empty());
+    assert_eq!(
+        frame.annotations.inversion,
+        Some(watchord_theory::inversion::Inversion::Root)
+    );
+    assert!(frame.annotations.slash.is_none());
+    assert_eq!(
+        frame.annotations.voicing.as_ref().unwrap().shape,
+        watchord_theory::voicing::VoicingShape::Close
+    );
+    assert_eq!(frame.annotations.staff.len(), 4);
     assert_eq!(frame.readings().len(), 3);
 }
 
@@ -113,18 +124,46 @@ fn the_wire_shape_is_the_value_not_the_struct() {
     assert!(line.contains("\"key\":\"0.4.7.9\""), "{line}");
     assert!(line.contains("\"origin\":\"reRooted\""), "{line}");
     assert!(line.contains("\"fit\":\"exact\""), "{line}");
-    assert!(line.contains("\"annotations\":{}"), "{line}");
+    assert!(line.contains("\"inversion\":\"root\""), "{line}");
     assert!(line.contains("\"screen\":\"nowPlaying\""), "{line}");
 }
 
 #[test]
 fn a_frame_written_before_annotations_exist_still_reads() {
-    let model = c6_model(vec![SoundingSet::new([60, 64, 67, 69])]);
-    let frame = model.frame();
-    let line = serde_json::to_string(&frame).expect("serialises");
-    let without = line.replace("\"annotations\":{},", "");
-    assert_ne!(without, line, "the control: the field was there to remove");
+    // Idle: no headline, so `watchord-theory::annotate` — and every part's own
+    // annotation fields — genuinely produce the empty `Annotations{}` a frame
+    // written before any of them existed would have carried, so removing the
+    // whole key and letting `#[serde(default)]` refill it round-trips exactly.
+    let idle = c6_model(vec![]);
+    let frame = idle.frame();
+    let mut value: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&frame).expect("serialises"))
+            .expect("parses to a Value");
+    let removed = value
+        .as_object_mut()
+        .expect("a Frame serialises to a JSON object")
+        .remove("annotations");
+    assert!(
+        removed.is_some(),
+        "the control: the field was there to remove"
+    );
+    let without = serde_json::to_string(&value).expect("re-serialises");
     let back: Frame = serde_json::from_str(&without).expect("parses without annotations");
+    assert_eq!(back, frame);
+}
+
+#[test]
+fn an_idle_frame_round_trips_through_json_to_an_equal_value() {
+    // `ChordKey::empty()`'s raw form is `""`, and `ChordKey`'s `Deserialize`
+    // used to reject the empty string outright — so an idle `Frame` (whose
+    // `key` is `ChordKey::empty()`) could serialise but never parse back.
+    // Fixed in `watchord-core`'s `ChordKey::parse`; this is the frame-level
+    // proof.
+    let idle = c6_model(vec![]);
+    let frame = idle.frame();
+    assert!(frame.key.is_empty(), "the case this guards: an idle key");
+    let line = serde_json::to_string(&frame).expect("serialises");
+    let back: Frame = serde_json::from_str(&line).expect("an idle frame parses back");
     assert_eq!(back, frame);
 }
 

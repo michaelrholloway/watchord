@@ -90,6 +90,12 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
             history_block(frame, &mut page);
             drill_block(frame, &mut page);
             editing(frame, &mut page);
+            // Last of the Now Playing extras: the real staff (ticket #11) can
+            // run to a dozen-plus rows on its own, so it draws after every
+            // other ticket's single-line content has already claimed its
+            // guaranteed row, and only the staff itself (then notes) absorbs
+            // the truncation on a short terminal.
+            voicing_and_staff(frame, &mut page);
             notes(frame, ui, &mut page, &mut hits);
             note_field(frame, field_row, &mut page, &mut hits)
         }
@@ -463,6 +469,113 @@ fn history_block(frame: &Frame, page: &mut Page) {
         "HISTORY {}{plate}  {strip}   VOICE LEADING {voice_leading_value}",
         frame.history.len()
     ));
+}
+
+fn voicing_and_staff(frame: &Frame, page: &mut Page) {
+    let a = &frame.annotations;
+
+    let inversion = a.inversion.map(|i| i.label()).unwrap_or(ABSENT);
+    let (shape, span, rootless, doublings) = match &a.voicing {
+        Some(v) => (
+            v.shape.label().to_string(),
+            v.span.to_string(),
+            if v.rootless { "yes" } else { "no" }.to_string(),
+            if v.doublings.is_empty() {
+                ABSENT.to_string()
+            } else {
+                v.doublings
+                    .iter()
+                    .map(|d| {
+                        format!(
+                            "{}x{}",
+                            watchord_core::NoteName::pitch_class(d.pitch_class, false),
+                            d.count
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            },
+        ),
+        None => (
+            ABSENT.to_string(),
+            ABSENT.to_string(),
+            ABSENT.to_string(),
+            ABSENT.to_string(),
+        ),
+    };
+    page.text(&format!(
+        "INVERSION {inversion}   SLASH {}   VOICING {shape}   SPAN {span}   ROOTLESS {rootless}   DOUBLINGS {doublings}",
+        or_absent(a.slash.as_deref())
+    ));
+
+    let upper_structure = if a.upper_structures.is_empty() {
+        ABSENT.to_string()
+    } else {
+        a.upper_structures.join(" · ")
+    };
+    page.line("upper structure", &upper_structure);
+
+    staff_block(frame, page, page.area.height);
+}
+
+/// The staff, for real: nine rows a clef (line, space, line, ... alternating),
+/// ledger rows extended only as far as the sounding notes need, a note head
+/// `●` with its accidental before it, and its name beside it — `#A4`, ` ●  A4`.
+/// `StaffNote::row` (0 = the clef's bottom line, 8 = top line) already does the
+/// line/space and ledger math; this only walks it top to bottom.
+///
+/// At 44 rows and up both clefs draw, `BASS` labelled even with nothing on
+/// it. At 30 the bass staff drops per spec ("Under 30 rows the bass staff
+/// drops") — full staff art needs more headroom than the one-line form did, so
+/// the floor for showing it at all moved up to 44; under 44 only the treble
+/// staff draws, and under that, whatever rows fit. Spacing is even (one row
+/// per step) by construction and is not tuned further, per Michael's ruling.
+fn staff_block(frame: &Frame, page: &mut Page, terminal_height: u16) {
+    use watchord_theory::staff::Clef;
+    for (label, clef) in [("treble", Clef::Treble), ("bass", Clef::Bass)] {
+        if clef == Clef::Bass && terminal_height < 44 {
+            continue;
+        }
+        let Some(y) = page.take() else { return };
+        page.put(y, 0, &label.to_uppercase());
+        let notes: Vec<_> = frame
+            .annotations
+            .staff
+            .iter()
+            .filter(|n| n.clef == clef)
+            .collect();
+        if notes.is_empty() {
+            page.put(y, 8, ABSENT);
+            continue;
+        }
+        let min_row = notes.iter().map(|n| n.row).min().unwrap().min(0);
+        let max_row = notes.iter().map(|n| n.row).max().unwrap().max(8);
+        for row in (min_row..=max_row).rev() {
+            let Some(y) = page.take() else { return };
+            // Plain ASCII, never a box-drawing character (the plain skin's
+            // no-boxes rule) — a hyphen reads as a staff line well enough.
+            let rule = if row.rem_euclid(2) == 0 { "--" } else { "  " };
+            page.put(y, 2, rule);
+            if let Some(note) = notes.iter().find(|n| n.row == row) {
+                page.put(y, 5, &format!("{}●", note.spelled.accidental.symbol()));
+                page.put(y, 9, &staff_note_name(note));
+            }
+        }
+    }
+}
+
+/// `A4`, `Bb3` — the letter and accidental [`crate::plain`] just drew, with
+/// the octave `watchord_core::NoteName::note` would give the same MIDI note
+/// (Yamaha/Roland convention, middle C is `C3`), so a claimed pitch class that
+/// draws flat still gets a name consistent with what is on the staff rather
+/// than `NoteName::note`'s always-sharp one.
+fn staff_note_name(note: &watchord_theory::staff::StaffNote) -> String {
+    let octave = note.midi_note as i32 / 12 - (60 / 12 - watchord_core::NoteName::MIDDLE_C_OCTAVE);
+    format!(
+        "{}{}{octave}",
+        note.spelled.letter,
+        note.spelled.accidental.symbol()
+    )
 }
 
 const CHORD_WIDTH: usize = 14;

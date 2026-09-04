@@ -1,6 +1,6 @@
 [package]
 name = "watchord-theory"
-description = "watchord theory: pure annotations derived after the engine ranks — voicing, inversion, numeral, staff, voice leading"
+description = "watchord theory: pure annotations derived after the engine ranks — voicing, inversion, slash, upper structure, staff, voice leading"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

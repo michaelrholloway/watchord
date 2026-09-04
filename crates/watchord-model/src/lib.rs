@@ -1137,7 +1137,12 @@ impl AppModel {
                 .map(|d| d.sounding.clone())
                 .unwrap_or_default(),
             alternates,
-            annotations: Annotations::default(),
+            annotations: self
+                .displayed
+                .as_ref()
+                .map(watchord_theory::annotate::annotate)
+                .map(Annotations::from)
+                .unwrap_or_default(),
             notes: self.notes_for_displayed_chord.clone(),
             groups,
             notes_total: self.total_note_count(),

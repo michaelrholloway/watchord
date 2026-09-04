@@ -44,7 +44,7 @@ fn round_trips_through_raw() {
 #[test]
 fn rejects_every_non_canonical_form() {
     for raw in [
-        "",         // empty
+        "",         // empty — `parse` rejects it on purpose; see its doc comment
         "0.4.7.",   // trailing separator
         "0,4,7",    // wrong separator
         "0.4.12",   // out of range
@@ -88,6 +88,30 @@ fn decoding_validates_a_corrupt_key_throws() {
             "{bad} should fail to decode"
         );
     }
+}
+
+/// `deserialize_key_or_empty` is the one sanctioned exception: a field that
+/// legitimately means "nothing displayed" opts into it explicitly, and every
+/// other `ChordKey` field keeps the strict `Deserialize` tested above.
+#[derive(serde::Deserialize)]
+struct KeyOrEmptyField {
+    #[serde(deserialize_with = "watchord_core::deserialize_key_or_empty")]
+    key: ChordKey,
+}
+
+#[test]
+fn deserialize_key_or_empty_reads_the_empty_string_as_the_empty_key() {
+    let parsed: KeyOrEmptyField = serde_json::from_str("{\"key\":\"\"}").unwrap();
+    assert_eq!(parsed.key, ChordKey::empty());
+}
+
+#[test]
+fn deserialize_key_or_empty_still_validates_a_real_key() {
+    let parsed: KeyOrEmptyField = serde_json::from_str("{\"key\":\"0.4.7\"}").unwrap();
+    assert_eq!(parsed.key, ChordKey::parse("0.4.7").unwrap());
+    // The control: it still rejects a corrupt non-empty key.
+    let bad: Result<KeyOrEmptyField, _> = serde_json::from_str("{\"key\":\"7.4.0\"}");
+    assert!(bad.is_err());
 }
 
 #[test]
