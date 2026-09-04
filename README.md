@@ -9,3 +9,5 @@ From v0.1.0:
 - `brew install michaelrholloway/tap/watchord`
 - `npx watchord`
 - `cargo install watchord`
+
+[Every field the plain skin shows, with examples.](docs/fields.md)
