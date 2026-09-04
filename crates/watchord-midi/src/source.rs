@@ -164,7 +164,14 @@ impl SoundingSetSource for MidiSource {
             let live_filter = Arc::clone(&self.live_filter);
             let inputs_tx = self.inputs.0.clone();
             thread::spawn(move || {
-                run_watch(client_name, filter, live_filter, events_tx, inputs_tx, stop_rx)
+                run_watch(
+                    client_name,
+                    filter,
+                    live_filter,
+                    events_tx,
+                    inputs_tx,
+                    stop_rx,
+                )
             })
         };
         self.running = Some(Running {

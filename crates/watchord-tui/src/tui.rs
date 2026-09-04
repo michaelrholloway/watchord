@@ -86,23 +86,51 @@ enum Action {
     Commit,
     Backspace,
     Type(char),
+    /// `i`: opens or closes the input picker (ticket 13).
+    ToggleInputPicker,
+    /// The picker is open: ↑ moves the highlight up, wrapping.
+    PickerUp,
+    /// The picker is open: ↓ moves the highlight down, wrapping.
+    PickerDown,
+    /// The picker is open: enter chooses the highlighted input and closes it.
+    PickerSelect,
+    /// The picker is open: esc closes it without choosing.
+    PickerClose,
+    /// `-`: narrows the settle window by one step.
+    SettleDown,
+    /// `+`: widens the settle window by one step.
+    SettleUp,
     Nothing,
 }
 
 /// Reads a key against the state that decides what it means.
 ///
-/// The field takes every printable key, so the two letter commands only fire
-/// when the field is empty: `q` quits and `d` deletes the selected note. Ctrl-C
-/// always quits.
-fn action_for(key: KeyEvent, draft_is_empty: bool, has_selection: bool) -> Action {
+/// The field takes every printable key, so the letter and symbol commands
+/// only fire when the field is empty: `q` quits, `d` deletes the selected
+/// note, `i` opens the input picker, `-`/`+` adjust the settle window. Ctrl-C
+/// always quits. While the picker is open, ↑↓/enter/esc drive it instead of
+/// their usual selection and commit meanings.
+fn action_for(
+    key: KeyEvent,
+    draft_is_empty: bool,
+    has_selection: bool,
+    picker_open: bool,
+) -> Action {
     if key.kind == KeyEventKind::Release {
         return Action::Nothing;
     }
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
         KeyCode::Char('c') if ctrl => Action::Quit,
+        KeyCode::Up if picker_open => Action::PickerUp,
+        KeyCode::Down if picker_open => Action::PickerDown,
+        KeyCode::Enter if picker_open => Action::PickerSelect,
+        KeyCode::Esc if picker_open => Action::PickerClose,
         KeyCode::Char('q') if draft_is_empty => Action::Quit,
         KeyCode::Char('d') if draft_is_empty && has_selection => Action::DeleteSelected,
+        KeyCode::Char('i') if draft_is_empty => Action::ToggleInputPicker,
+        KeyCode::Char('-') if draft_is_empty => Action::SettleDown,
+        KeyCode::Char('+') if draft_is_empty => Action::SettleUp,
         KeyCode::Tab => Action::NextScreen,
         KeyCode::BackTab => Action::PreviousScreen,
         KeyCode::Up => Action::SelectUp,
@@ -204,6 +232,31 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
             model.draft_note_text.pop();
         }
         Action::Type(c) => model.draft_note_text.push(c),
+        Action::ToggleInputPicker => {
+            ui.input_picker_open = !ui.input_picker_open;
+            ui.input_picker_index = 0;
+        }
+        Action::PickerUp => {
+            let count = model.connected_inputs().len();
+            if count > 0 {
+                ui.input_picker_index = (ui.input_picker_index + count - 1) % count;
+            }
+        }
+        Action::PickerDown => {
+            let count = model.connected_inputs().len();
+            if count > 0 {
+                ui.input_picker_index = (ui.input_picker_index + 1) % count;
+            }
+        }
+        Action::PickerSelect => {
+            if let Some(name) = model.connected_inputs().get(ui.input_picker_index).cloned() {
+                model.select_input(Some(name));
+            }
+            ui.input_picker_open = false;
+        }
+        Action::PickerClose => ui.input_picker_open = false,
+        Action::SettleDown => model.decrease_settle(),
+        Action::SettleUp => model.increase_settle(),
         Action::Nothing => {}
     }
     true
@@ -249,6 +302,7 @@ pub fn run(mut model: AppModel, skin: Skin) -> io::Result<()> {
                         key,
                         model.draft_note_text.is_empty(),
                         ui.selected(model.screen).is_some(),
+                        ui.input_picker_open,
                     );
                     if !apply(action, &mut model, &mut ui) {
                         break;
@@ -407,11 +461,11 @@ mod tests {
     #[test]
     fn q_quits_only_when_the_field_is_empty() {
         assert_eq!(
-            action_for(key(KeyCode::Char('q')), true, false),
+            action_for(key(KeyCode::Char('q')), true, false, false),
             Action::Quit
         );
         assert_eq!(
-            action_for(key(KeyCode::Char('q')), false, false),
+            action_for(key(KeyCode::Char('q')), false, false, false),
             Action::Type('q')
         );
     }
@@ -419,21 +473,21 @@ mod tests {
     #[test]
     fn ctrl_c_always_quits() {
         let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(action_for(ctrl_c, false, true), Action::Quit);
+        assert_eq!(action_for(ctrl_c, false, true, false), Action::Quit);
     }
 
     #[test]
     fn d_deletes_only_with_a_selection_and_an_empty_field() {
         assert_eq!(
-            action_for(key(KeyCode::Char('d')), true, true),
+            action_for(key(KeyCode::Char('d')), true, true, false),
             Action::DeleteSelected
         );
         assert_eq!(
-            action_for(key(KeyCode::Char('d')), true, false),
+            action_for(key(KeyCode::Char('d')), true, false, false),
             Action::Type('d')
         );
         assert_eq!(
-            action_for(key(KeyCode::Char('d')), false, true),
+            action_for(key(KeyCode::Char('d')), false, true, false),
             Action::Type('d')
         );
     }
@@ -443,5 +497,148 @@ mod tests {
         assert_eq!(next_screen(Screen::NowPlaying, 1), Screen::AllNotes);
         assert_eq!(next_screen(Screen::AllNotes, 1), Screen::NowPlaying);
         assert_eq!(next_screen(Screen::NowPlaying, -1), Screen::AllNotes);
+    }
+
+    // MARK: - Pedals, settle, and the input picker (ticket 13)
+
+    #[test]
+    fn i_opens_the_picker_only_when_the_field_is_empty() {
+        assert_eq!(
+            action_for(key(KeyCode::Char('i')), true, false, false),
+            Action::ToggleInputPicker
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Char('i')), false, false, false),
+            Action::Type('i'),
+            "the field wins while it has text"
+        );
+    }
+
+    #[test]
+    fn settle_keys_fire_only_when_the_field_is_empty() {
+        assert_eq!(
+            action_for(key(KeyCode::Char('-')), true, false, false),
+            Action::SettleDown
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Char('+')), true, false, false),
+            Action::SettleUp
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Char('-')), false, false, false),
+            Action::Type('-'),
+            "the field wins while it has text"
+        );
+    }
+
+    #[test]
+    fn while_the_picker_is_open_up_down_enter_and_esc_drive_it_not_selection() {
+        assert_eq!(
+            action_for(key(KeyCode::Up), true, false, true),
+            Action::PickerUp
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Down), true, false, true),
+            Action::PickerDown
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Enter), true, false, true),
+            Action::PickerSelect
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Esc), true, false, true),
+            Action::PickerClose
+        );
+        // The control: closed, the same keys mean what they always meant.
+        assert_eq!(
+            action_for(key(KeyCode::Up), true, false, false),
+            Action::SelectUp
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Enter), true, false, false),
+            Action::Commit
+        );
+        assert_eq!(
+            action_for(key(KeyCode::Esc), true, false, false),
+            Action::ClearSelection
+        );
+    }
+
+    #[test]
+    fn toggling_the_picker_opens_it_on_the_first_input_and_closes_it_again() {
+        let mut model = model_with_notes();
+        let mut ui = UiState::default();
+        assert!(!ui.input_picker_open);
+
+        apply(Action::ToggleInputPicker, &mut model, &mut ui);
+        assert!(ui.input_picker_open);
+        assert_eq!(ui.input_picker_index, 0);
+
+        apply(Action::ToggleInputPicker, &mut model, &mut ui);
+        assert!(!ui.input_picker_open);
+    }
+
+    /// An idle model with two connected inputs, started and pumped so
+    /// `connected_inputs()` already reports them, plus a handle onto the same
+    /// scripted source so a test can read back what reached it.
+    fn model_with_two_inputs() -> (AppModel, ScriptedSoundingSetSource) {
+        let store = InMemoryNoteStore::default();
+        let source = ScriptedSoundingSetSource::default();
+        source.attach(&["Nord Stage 3", "IAC Driver Bus 1"]);
+        let mut model = AppModel::new(
+            Arc::new(StubChordNaming::new()),
+            Box::new(source.clone()),
+            Arc::new(store),
+        );
+        model.start();
+        while model.connected_inputs().len() < 2 {
+            model.wait(Duration::from_millis(50));
+        }
+        (model, source)
+    }
+
+    #[test]
+    fn picker_up_and_down_wrap_around_the_connected_inputs() {
+        let (mut model, _source) = model_with_two_inputs();
+        let mut ui = UiState::default();
+        assert_eq!(ui.input_picker_index, 0);
+
+        apply(Action::PickerUp, &mut model, &mut ui);
+        assert_eq!(ui.input_picker_index, 1, "up from 0 wraps to the last row");
+        apply(Action::PickerDown, &mut model, &mut ui);
+        assert_eq!(
+            ui.input_picker_index, 0,
+            "down from the last row wraps to 0"
+        );
+        apply(Action::PickerDown, &mut model, &mut ui);
+        assert_eq!(ui.input_picker_index, 1);
+    }
+
+    #[test]
+    fn picker_select_calls_select_input_with_the_highlighted_name_and_closes() {
+        let (mut model, source) = model_with_two_inputs();
+        let mut ui = UiState {
+            input_picker_open: true,
+            input_picker_index: 1,
+            ..Default::default()
+        };
+        apply(Action::PickerSelect, &mut model, &mut ui);
+        assert!(!ui.input_picker_open, "selecting closes the picker");
+        assert_eq!(
+            source.last_selected_input(),
+            Some(Some("IAC Driver Bus 1".to_string())),
+            "the highlighted row's name reached the source"
+        );
+    }
+
+    #[test]
+    fn settle_keys_move_the_models_settle_window() {
+        let mut model = model_with_notes();
+        assert_eq!(model.settle_ms(), 60);
+        apply(Action::SettleDown, &mut model, &mut UiState::default());
+        assert_eq!(model.settle_ms(), 50);
+        apply(Action::SettleUp, &mut model, &mut UiState::default());
+        apply(Action::SettleUp, &mut model, &mut UiState::default());
+        assert_eq!(model.settle_ms(), 70);
     }
 }

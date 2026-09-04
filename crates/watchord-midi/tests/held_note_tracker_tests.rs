@@ -410,7 +410,10 @@ fn sostenuto_and_soft_read_independently_of_sustain_and_of_each_other() {
 
     tracker.apply_all([sostenuto(0)]);
     assert!(!tracker.is_sostenuto_down());
-    assert!(tracker.is_soft_down(), "sostenuto lifting must not clear soft");
+    assert!(
+        tracker.is_soft_down(),
+        "sostenuto lifting must not clear soft"
+    );
 
     tracker.apply_all([soft(0)]);
     assert!(!tracker.is_soft_down());
@@ -420,7 +423,10 @@ fn sostenuto_and_soft_read_independently_of_sustain_and_of_each_other() {
 fn sostenuto_and_soft_use_the_same_threshold_as_sustain() {
     let mut tracker = HeldNoteTracker::new();
     tracker.apply_all([sostenuto(tuning::SUSTAIN_ON_THRESHOLD - 1)]);
-    assert!(!tracker.is_sostenuto_down(), "one under the threshold is up");
+    assert!(
+        !tracker.is_sostenuto_down(),
+        "one under the threshold is up"
+    );
     tracker.apply_all([sostenuto(tuning::SUSTAIN_ON_THRESHOLD)]);
     assert!(tracker.is_sostenuto_down(), "at the threshold is down");
 

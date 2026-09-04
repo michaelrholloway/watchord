@@ -105,6 +105,12 @@ fn print_lists_every_frame_label_and_not_the_control() {
         out.contains("\ngroup: C6 · key 0.4.7.9 · notes 2\n"),
         "{out}"
     );
+    // The pedal, settle, and arpeggio plates on a fake launch: nothing pressed.
+    assert!(out.contains("\nsustain: up\n"), "{out}");
+    assert!(out.contains("\nsostenuto: up\n"), "{out}");
+    assert!(out.contains("\nsoft: up\n"), "{out}");
+    assert!(out.contains("\nsettle: 60 ms\n"), "{out}");
+    assert!(out.contains("\narpeggio: off\n"), "{out}");
 }
 
 #[test]

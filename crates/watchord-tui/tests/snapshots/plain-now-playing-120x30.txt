@@ -4,6 +4,8 @@
  STATUS         —
  SCREEN         [Now Playing]    All Notes
 
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ PICKER   press i to choose an input
  HEADLINE       C6
  APPROXIMATION  —
  SPOKEN         C major 6
@@ -24,7 +26,5 @@
  NOTES 2
    try it with the 9 on top                                                                                      delete
    sounds like the Rhodes on Voodoo                                                                              delete
-
-
  DRAFT          add a note…
  TAB SCREEN · ↑↓ SELECT · D DELETE · ENTER SAVE · Q QUIT

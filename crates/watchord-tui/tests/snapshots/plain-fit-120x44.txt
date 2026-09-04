@@ -4,6 +4,8 @@
  STATUS         —
  SCREEN         [Now Playing]    All Notes
 
+ SUSTAIN UP   SOSTENUTO UP   SOFT UP   SETTLE 60 ms   ARPEGGIO OFF
+ PICKER   press i to choose an input
  HEADLINE       C13/E
  APPROXIMATION  —
  SPOKEN         C major, minor 7, 13
@@ -23,8 +25,6 @@
 
  NOTES 0
    none yet
-
-
 
 
 

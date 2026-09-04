@@ -835,7 +835,10 @@ mod pedal_tests {
 
         f.source.pedal(PedalKind::Sustain, false);
         pump(&mut f.model, |m| !m.is_sustain_down());
-        assert!(f.model.is_soft_down(), "lifting sustain must not touch soft");
+        assert!(
+            f.model.is_soft_down(),
+            "lifting sustain must not touch soft"
+        );
         f.model.stop();
     }
 }
@@ -846,7 +849,11 @@ mod settle_tests {
     #[test]
     fn settle_moves_in_10ms_steps_and_clamps_at_10_and_500() {
         let mut f = Fixture::new();
-        assert_eq!(f.model.settle_ms(), 60, "tuning::SETTLE_INTERVAL's own value");
+        assert_eq!(
+            f.model.settle_ms(),
+            60,
+            "tuning::SETTLE_INTERVAL's own value"
+        );
 
         f.model.decrease_settle();
         assert_eq!(f.model.settle_ms(), 50);
@@ -913,7 +920,10 @@ mod arpeggio_tests {
 
         f.source.pedal(PedalKind::Sostenuto, false);
         pump(&mut f.model, |m| !m.is_sostenuto_down());
-        assert!(f.model.is_arpeggio(), "the release edge must not toggle again");
+        assert!(
+            f.model.is_arpeggio(),
+            "the release edge must not toggle again"
+        );
 
         f.source.pedal(PedalKind::Sostenuto, true);
         pump(&mut f.model, |m| !m.is_arpeggio());

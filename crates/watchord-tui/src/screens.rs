@@ -26,8 +26,9 @@ use crate::push::{
 use crate::when;
 
 /// What the skin holds that the model does not: which note row the keys have
-/// selected on each screen, and how far the wheel has scrolled each table.
-/// Nothing else — the draft text lives on the model.
+/// selected on each screen, how far the wheel has scrolled each table, and
+/// whether the input picker is open and which row it has highlighted. The
+/// draft text and every pedal, settle, and arpeggio fact live on the model.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UiState {
     /// The selected note on Now Playing, an index into
@@ -38,6 +39,10 @@ pub struct UiState {
     pub selected_all_notes: Option<usize>,
     /// Rows scrolled off the top of each table by the wheel.
     pub scroll: Scroll,
+    /// Whether the input picker (ticket 13) is open. `i` toggles it.
+    pub input_picker_open: bool,
+    /// The highlighted row in the input picker, an index into `Frame::inputs`.
+    pub input_picker_index: usize,
 }
 
 /// The three tables the wheel can scroll.

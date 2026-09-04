@@ -121,6 +121,16 @@ fn or_absent(value: Option<&str>) -> &str {
     }
 }
 
+/// A pedal plate's word: `down` or `up`.
+fn pedal_word(down: bool) -> &'static str {
+    if down { "down" } else { "up" }
+}
+
+/// A mode plate's word: `on` or `off`.
+fn mode_word(on: bool) -> &'static str {
+    if on { "on" } else { "off" }
+}
+
 /// Every field of the frame, as `label: value` lines.
 pub fn render(frame: &Frame) -> String {
     let mut lines = Vec::new();
@@ -137,6 +147,11 @@ pub fn render(frame: &Frame) -> String {
     ));
     lines.push(format!("screen: {}", frame.screen.title()));
     lines.push(format!("state: {}", frame.state.label()));
+    lines.push(format!("sustain: {}", pedal_word(frame.sustain)));
+    lines.push(format!("sostenuto: {}", pedal_word(frame.sostenuto)));
+    lines.push(format!("soft: {}", pedal_word(frame.soft)));
+    lines.push(format!("settle: {} ms", frame.settle_ms));
+    lines.push(format!("arpeggio: {}", mode_word(frame.arpeggio)));
     lines.push(format!("headline: {}", frame.headline_text));
     lines.push(format!(
         "approximation: {}",

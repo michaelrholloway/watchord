@@ -278,7 +278,11 @@ fn a_control_event_that_does_not_change_a_pedal_emits_nothing() {
 fn pedal_changes_are_not_debounced_by_the_settle_window() {
     let mut h = Harness::new();
     let events = h.relay.receive([cc(64, 127)], h.now);
-    assert_eq!(events.len(), 1, "reported on the same call, not after settle");
+    assert_eq!(
+        events.len(),
+        1,
+        "reported on the same call, not after settle"
+    );
 }
 
 #[test]
