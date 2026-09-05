@@ -299,9 +299,15 @@ This reading's Nashville number against KEY CONTEXT: `57`, matching NUMERAL's
 ### FUNCTION
 
 This reading's role against KEY CONTEXT: `tonic`, `subdominant`, `dominant`,
-`borrowed`, or `chromatic`. `—` with no key context. The `borrowed` role
-means a diatonic root with a non-diatonic triad quality. The `chromatic` role
-means a root outside the key.
+`borrowed`, `chromatic`, or a secondary dominant such as `V7/IV`. `—` with no
+key context. The `borrowed` role means a diatonic root with a non-diatonic
+triad quality. The `chromatic` role means a root outside the key.
+
+A dominant seventh on a diatonic root reads as the dominant of the degree a
+fourth above it, when that degree is in the key: `C7` in C major is `V7/IV`,
+`D7` is `V7/V`, `A7` is `V7/ii`. The NUMERAL stays `I7`. `G7` is the plain
+`dominant` in both modes. `F7` in C major resolves outside the key, so it
+keeps the triad's role, `subdominant`.
 
 **Shape only.** Same reading: `FUNCTION   dominant`.
 

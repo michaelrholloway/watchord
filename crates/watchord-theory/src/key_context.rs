@@ -87,6 +87,10 @@ pub enum Function {
     Subdominant,
     /// Degrees 5, 7.
     Dominant,
+    /// A dominant seventh on a diatonic root whose resolution — a perfect
+    /// fourth up — is another diatonic degree: `C7` in C major is `V7/IV`.
+    /// `target` is that degree (2-7); `mode` fixes its case.
+    SecondaryDominant { mode: Mode, target: u8 },
     /// The root is diatonic; the triad quality is not the diatonic one.
     Borrowed,
     /// The root is not diatonic.
@@ -94,15 +98,35 @@ pub enum Function {
 }
 
 impl Function {
-    /// `tonic`, `subdominant`, `dominant`, `borrowed`, `chromatic`.
+    /// `tonic`, `subdominant`, `dominant`, `borrowed`, `chromatic`, or a
+    /// secondary dominant written as its resolution: `V7/IV`, `V7/vi`.
     pub fn label(self) -> &'static str {
         match self {
             Function::Tonic => "tonic",
             Function::Subdominant => "subdominant",
             Function::Dominant => "dominant",
+            Function::SecondaryDominant { mode, target } => secondary_dominant_label(mode, target),
             Function::Borrowed => "borrowed",
             Function::Chromatic => "chromatic",
         }
+    }
+}
+
+/// `V7/<target>`, the target cased by the triad its degree expects in `mode`.
+/// Only the degrees the rule in `function_of` can reach have an entry.
+fn secondary_dominant_label(mode: Mode, target: u8) -> &'static str {
+    match (mode, target) {
+        (Mode::Major, 2) => "V7/ii",
+        (Mode::Major, 3) => "V7/iii",
+        (Mode::Major, 4) => "V7/IV",
+        (Mode::Major, 5) => "V7/V",
+        (Mode::Major, 6) => "V7/vi",
+        (Mode::Minor, 3) => "V7/III",
+        (Mode::Minor, 4) => "V7/iv",
+        (Mode::Minor, 5) => "V7/v",
+        (Mode::Minor, 6) => "V7/VI",
+        (Mode::Minor, 7) => "V7/VII",
+        _ => unreachable!("function_of only builds a secondary dominant on a reachable target"),
     }
 }
 
@@ -241,9 +265,36 @@ fn expected_quality(mode: Mode, degree: u8) -> TriadQuality {
     table[(degree - 1) as usize]
 }
 
-fn function_of(mode: Mode, degree: u8, accidental: Option<char>, actual: TriadQuality) -> Function {
+/// A dominant seventh — major triad plus minor seventh — on a diatonic root
+/// is read as the dominant of the degree a perfect fourth above it, when that
+/// degree is diatonic and its triad is major or minor. Degree 5 resolves to
+/// the tonic, so it is the plain `Dominant` in both modes (`G7` in C minor
+/// is not `Borrowed`). `F7` in C major resolves to Bb, outside the key, so
+/// it falls through to the triad rules below and stays `Subdominant`.
+fn function_of(
+    mode: Mode,
+    degree: u8,
+    accidental: Option<char>,
+    actual: TriadQuality,
+    dominant_seventh: bool,
+) -> Function {
     if accidental.is_some() {
         return Function::Chromatic;
+    }
+    if dominant_seventh && actual == TriadQuality::Major {
+        let scale = match mode {
+            Mode::Major => MAJOR_SCALE,
+            Mode::Minor => NATURAL_MINOR_SCALE,
+        };
+        let fourth_up = (scale[(degree - 1) as usize] + 5) % 12;
+        if let (target, None) = degree_info(mode, fourth_up) {
+            if target == 1 {
+                return Function::Dominant;
+            }
+            if expected_quality(mode, target) != TriadQuality::Diminished {
+                return Function::SecondaryDominant { mode, target };
+            }
+        }
     }
     if expected_quality(mode, degree) != actual {
         return Function::Borrowed;
@@ -313,11 +364,13 @@ pub fn annotate_reading(
     let offset = key.tonic.interval_to(root);
     let (degree, accidental) = degree_info(key.mode, offset);
     let quality = triad_quality(root, pitch_classes);
+    let dominant_seventh = pitch_classes.contains(&root.transposed(10))
+        && !pitch_classes.contains(&root.transposed(11));
     let suffix = suffix_of(display);
     ReadingKeyContext {
         numeral: format!("{}{suffix}", roman_numeral(degree, accidental, quality)),
         nashville: format!("{}{suffix}", nashville_number(degree, accidental)),
-        function: function_of(key.mode, degree, accidental, quality),
+        function: function_of(key.mode, degree, accidental, quality, dominant_seventh),
     }
 }
 
@@ -527,6 +580,82 @@ mod tests {
         );
     }
 
+    // MARK: - function: secondary dominants
+
+    fn dom7(root: i32) -> BTreeSet<PitchClass> {
+        [pc(root), pc(root + 4), pc(root + 7), pc(root + 10)]
+            .into_iter()
+            .collect()
+    }
+
+    #[test]
+    fn a_dominant_seventh_on_the_tonic_keeps_its_numeral_and_reads_v7_of_iv() {
+        let key = Key::new(pc(0), Mode::Major); // C major
+        let out = annotate_reading(key, pc(0), &dom7(0), "C7");
+        assert_eq!(out.numeral, "I7");
+        assert_eq!(out.nashville, "17");
+        assert_eq!(
+            out.function,
+            Function::SecondaryDominant {
+                mode: Mode::Major,
+                target: 4
+            }
+        );
+        assert_eq!(out.function.label(), "V7/IV");
+    }
+
+    #[test]
+    fn every_secondary_dominant_in_major() {
+        let key = Key::new(pc(0), Mode::Major); // C major
+        let label = |root: i32, name: &str| {
+            annotate_reading(key, pc(root), &dom7(root), name)
+                .function
+                .label()
+        };
+        assert_eq!(label(2, "D7"), "V7/V");
+        assert_eq!(label(4, "E7"), "V7/vi");
+        assert_eq!(label(9, "A7"), "V7/ii");
+        assert_eq!(label(11, "B7"), "V7/iii");
+        // V7 resolves to the tonic: the plain dominant, not a secondary one.
+        assert_eq!(label(7, "G7"), "dominant");
+        // IV7 resolves to Bb, outside C major: the triad rule still applies.
+        assert_eq!(label(5, "F7"), "subdominant");
+    }
+
+    #[test]
+    fn every_secondary_dominant_in_minor() {
+        let key = Key::new(pc(0), Mode::Minor); // C minor
+        let label = |root: i32, name: &str| {
+            annotate_reading(key, pc(root), &dom7(root), name)
+                .function
+                .label()
+        };
+        assert_eq!(label(0, "C7"), "V7/iv");
+        assert_eq!(label(2, "D7"), "V7/v");
+        assert_eq!(label(3, "Eb7"), "V7/VI");
+        assert_eq!(label(5, "F7"), "V7/VII");
+        assert_eq!(label(10, "Bb7"), "V7/III");
+        // G7 in C minor was Borrowed under the triad rule; it is the dominant.
+        assert_eq!(label(7, "G7"), "dominant");
+        // Ab7 resolves to Db, outside C minor: major triad on a major degree.
+        assert_eq!(label(8, "Ab7"), "tonic");
+    }
+
+    #[test]
+    fn a_major_seventh_or_a_chromatic_root_is_never_a_secondary_dominant() {
+        let key = Key::new(pc(0), Mode::Major); // C major
+        let cmaj7: BTreeSet<PitchClass> = [pc(0), pc(4), pc(7), pc(11)].into_iter().collect();
+        assert_eq!(
+            annotate_reading(key, pc(0), &cmaj7, "CΔ7").function,
+            Function::Tonic
+        );
+        // Eb7: chromatic root stays chromatic even as a dominant seventh.
+        assert_eq!(
+            annotate_reading(key, pc(3), &dom7(3), "Eb7").function,
+            Function::Chromatic
+        );
+    }
+
     // MARK: - Key
 
     #[test]
@@ -552,6 +681,14 @@ mod tests {
         assert_eq!(back, key);
 
         let f = Function::Borrowed;
+        let json = serde_json::to_string(&f).expect("Function serialises");
+        let back: Function = serde_json::from_str(&json).expect("Function parses back");
+        assert_eq!(back, f);
+
+        let f = Function::SecondaryDominant {
+            mode: Mode::Major,
+            target: 4,
+        };
         let json = serde_json::to_string(&f).expect("Function serialises");
         let back: Function = serde_json::from_str(&json).expect("Function parses back");
         assert_eq!(back, f);
