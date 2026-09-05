@@ -17,7 +17,7 @@
 
  READINGS 2 · HEADLINE 1 · ALTERNATES 1
    RANK NAME          ORIGIN     FIT                 SCORE ROOT CLAIMED               NUMERAL   NASHVILLE FUNCTION
-   1    C7#9          headline   exact               100   C    C D# E G A#           I7#9      17#9      tonic
+   1    C7#9          headline   exact               100   C    C D# E G A#           I7#9      17#9      V7/IV
    2    Eb/C          reRooted   exact               90    D#   D# G A#               bIII      b3        chromatic
 
  ANNOTATIONS

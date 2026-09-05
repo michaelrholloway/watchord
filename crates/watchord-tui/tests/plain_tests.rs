@@ -117,6 +117,51 @@ fn fit_model() -> AppModel {
     model
 }
 
+/// A C minor add 9 with the ninth and the minor third a semitone apart in one
+/// octave: D3 and D#3 share a staff row, since a sharp sits on its natural's
+/// row. The staff must draw both.
+fn same_row_model() -> AppModel {
+    let cmadd9 = SoundingSet::new([48, 55, 60, 62, 63, 67]);
+    let naming = StubChordNaming::new();
+    naming.stub(
+        &cmadd9,
+        StubChordNaming::naming(&cmadd9, "Cmadd9", "C minor, add 9", vec![]),
+    );
+    let mut model = AppModel::new(
+        Arc::new(naming),
+        Box::new(ScriptedSoundingSetSource::new(vec![cmadd9])),
+        Arc::new(InMemoryNoteStore::default()),
+    );
+    model.start();
+    while model.wait(Duration::from_millis(50)) {}
+    model
+}
+
+#[test]
+fn two_notes_on_one_staff_row_both_draw() {
+    let model = same_row_model();
+    let frame = model.frame();
+    let ui = UiState::default();
+    let (rows, _) = render(&frame, &ui, WIDTH, 60);
+    let text = text_of(&rows);
+    // Six sounding notes, six note heads; before the fix D#3 was dropped.
+    assert_eq!(
+        text.matches('●').count(),
+        6,
+        "one head per sounding note:\n{text}"
+    );
+    let row = rows
+        .iter()
+        .find(|r| r.contains("D3") && r.contains("D#3"))
+        .unwrap_or_else(|| panic!("D3 and D#3 share one row:\n{text}"));
+    assert!(
+        row.find("D3").unwrap() < row.find("D#3").unwrap(),
+        "lowest first: {row}"
+    );
+    // Control: a note nobody played is on no row.
+    assert!(!text.contains("F3"), "control note F3 must be absent");
+}
+
 /// Drill, active, with a graded attempt already behind it (ticket #14) — the
 /// case `--fake` cannot show on its own, since `p` has not been pressed.
 fn drill_model() -> AppModel {

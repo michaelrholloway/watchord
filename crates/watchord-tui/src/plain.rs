@@ -564,9 +564,15 @@ fn staff_block(frame: &Frame, page: &mut Page, terminal_height: u16) {
             // no-boxes rule) — a hyphen reads as a staff line well enough.
             let rule = if row.rem_euclid(2) == 0 { "--" } else { "  " };
             page.put(y, 2, rule);
-            if let Some(note) = notes.iter().find(|n| n.row == row) {
-                page.put(y, 5, &format!("{}●", note.spelled.accidental.symbol()));
-                page.put(y, 9, &staff_note_name(note));
+            // Every note on this row, lowest first, side by side: a sharp
+            // shares its natural's row, so D3 and D#3 sounding together are
+            // two heads on one row, not one head and a dropped note.
+            let mut x = 5;
+            for note in notes.iter().filter(|n| n.row == row) {
+                let name = staff_note_name(note);
+                page.put(y, x, &format!("{}●", note.spelled.accidental.symbol()));
+                page.put(y, x + 4, &name);
+                x += 4 + name.chars().count() as u16 + 3;
             }
         }
     }
