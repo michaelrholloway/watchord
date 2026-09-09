@@ -1,0 +1,4 @@
+# Snapshots and every text file compare by bytes on every platform.
+* text=auto eol=lf
+# cargo-dist wrote the installer source with CRLF; leave it as it is.
+crates/watchord/wix/main.wxs -text

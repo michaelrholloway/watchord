@@ -53,6 +53,11 @@ jobs:
       tag: ${{ !github.event.pull_request && github.ref_name || '' }}
       tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
       publishing: ${{ !github.event.pull_request }}
+      # Hand-edited: which publish secrets exist. A job-level `if` may not read
+      # `secrets`, so the plan job reads them and the publish jobs read this.
+      has-homebrew-token: ${{ steps.publish-secrets.outputs.homebrew }}
+      has-npm-token: ${{ steps.publish-secrets.outputs.npm }}
+      has-crates-token: ${{ steps.publish-secrets.outputs.crates }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -60,6 +65,12 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      - id: publish-secrets
+        shell: bash
+        run: |
+          echo "homebrew=${{ secrets.HOMEBREW_TAP_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+          echo "npm=${{ secrets.NPM_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+          echo "crates=${{ secrets.CARGO_REGISTRY_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
       - name: Install dist
         # we specify bash to get pipefail; it guards against the `curl` command
         # failing. otherwise `sh` won't catch that `curl` returned non-0
@@ -293,7 +304,7 @@ jobs:
     # crates-token.sh, tap-repo.sh only) -- Michael sets it by hand: a repo-scoped
     # PAT on michaelrholloway/homebrew-tap, added with
     # `gh secret set HOMEBREW_TAP_TOKEN --repo michaelrholloway/watchord`.
-    if: ${{ (!fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases) && secrets.HOMEBREW_TAP_TOKEN != '' }}
+    if: ${{ (!fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases) && needs.plan.outputs.has-homebrew-token == 'true' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -339,7 +350,7 @@ jobs:
       PLAN: ${{ needs.plan.outputs.val }}
     # Hand-edited: skip cleanly (never fail the release) when NPM_TOKEN hasn't
     # been set yet. scripts/wizard/npm-token.sh creates it.
-    if: ${{ (!fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases) && secrets.NPM_TOKEN != '' }}
+    if: ${{ (!fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases) && needs.plan.outputs.has-npm-token == 'true' }}
     steps:
       - name: Fetch npm packages
         uses: actions/download-artifact@v8
@@ -372,7 +383,7 @@ jobs:
       - plan
       - host
     runs-on: "ubuntu-22.04"
-    if: ${{ (!fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases) && secrets.CARGO_REGISTRY_TOKEN != '' }}
+    if: ${{ (!fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases) && needs.plan.outputs.has-crates-token == 'true' }}
     env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
