@@ -1,6 +1,5 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ WATCHORD                                                                     │
-├──────────────────────────┬───────────────────────────────────────────────────┤
 │                          │KEY[K][M]:  —                                      │
 │                          │FUNCTION:   —                                      │
 │            C6            │NUMERAL:    —                                      │
@@ -9,6 +8,7 @@
 │                          │NAME        ORIGIN     FIT      NUMERAL FUNCTION   │
 │                          │C6          HEADLINE   EXACT    —       —          │
 ├──────────────────────────┤Am7/C       REROOTED   EXACT    —       —          │
+│        ──────────        │CΔ6         ENHARMONIC EXACT    —       —          │
 │                          │HISTORY                                          ■ │
 │        ──────────        │NAME        KEYS                NUMERAL FUNCTION   │
 │                          │C6          C3   E3   G3   A3   —       —          │

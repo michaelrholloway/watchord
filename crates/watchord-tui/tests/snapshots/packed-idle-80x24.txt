@@ -1,6 +1,5 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ WATCHORD                                                                     │
-├──────────────────────────┬───────────────────────────────────────────────────┤
 │                          │KEY[K][M]:  —                                      │
 │                          │FUNCTION:   —                                      │
 │            —             │NUMERAL:    —                                      │
@@ -9,11 +8,12 @@
 │                          │NAME        ORIGIN     FIT      NUMERAL FUNCTION   │
 │                          │—                                                  │
 ├──────────────────────────┤HISTORY                                          ■ │
-│        ──────────        │NAME        KEYS                NUMERAL FUNCTION   │
-│                          │—                                                  │
-│        ──────────        │NOTES                                            ■ │
-│                          │ play a chord to write a note   SAVE[⏎] VIEW ALL[N]│
-│        ──────────        │CHORD       NOTE                                   │
+│                          │NAME        KEYS                NUMERAL FUNCTION   │
+│        ──────────        │—                                                  │
+│                          │NOTES                                            ■ │
+│        ──────────        │ play a chord to write a note   SAVE[⏎] VIEW ALL[N]│
+│                          │CHORD       NOTE                                   │
+│        ──────────        │                                                   │
 │                          │                                                   │
 │        ──────────        │                                                   │
 │                          │                                                   │

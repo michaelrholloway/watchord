@@ -47,8 +47,9 @@ serves every skin.
   as a gap above the header, not as a border. The border is an **underline on
   every cell of a section's last row**, drawn in ink: the line sits at the foot
   of that row and the next header starts flush against it, at no cost in rows.
-  The trade is that the last row's text is underlined too. Every row is one
-  terminal row. History keys are filled chips, as drawn, and chips in adjacent
+  The trade is that the last row's text is underlined too. The title bar's
+  border is the same underline, so the KEY row starts on row 2. Every row is
+  one terminal row, and there is no padding between rows: a cell is the unit. History keys are filled chips, as drawn, and chips in adjacent
   rows touch.
 - Note heads are `■` on one column; an accidental sits in the cell to the left
   and never moves the head. Two heads on one row (D3 and D#3) sit two cells

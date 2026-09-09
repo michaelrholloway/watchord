@@ -1,6 +1,5 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ WATCHORD                                                                     │
-├──────────────────────────────────────────────────────────────────────────────┤
 │NOTES       9 · 4 GROUPS                                                    ■ │
 │SEARCH:      type to search                                                   │
 │SORT[S]: RECENT                                                 NOW PLAYING[N]│
@@ -18,6 +17,7 @@
 │CΔ7         2 NOTES                               0.4.7.11                    │
 │            keep the 7th on top                   CΔ7         YYYY-MM-DD HH:MM│
 │            the turnaround starts here            CΔ7         YYYY-MM-DD HH:MM│
+│                                                                              │
 │                                                                              │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ SUSTAIN: ON ●    ARPEGGIO[A]: ON ●    STATE: PLAYING ●        INPUT[I]: FAKE │

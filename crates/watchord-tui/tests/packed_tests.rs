@@ -265,16 +265,15 @@ fn now_playing_at_80x24_draws_the_design() {
     assert_eq!(hits.tabs[0].1, Screen::AllNotes);
     // Nothing is selected, so no DEL cell is drawn.
     assert!(hits.delete_cells.is_empty());
+    // The title bar's border is an underline, not a rule row, so 24 rows
+    // hold 19 body rows and the third reading fits.
+    assert_words(&text, &["CΔ6", "ENHARMONIC"], &[], "packed 80x24 readings");
+    assert_eq!(rows[1].trim_matches('│').trim(), "WATCHORD", "{}", rows[1]);
     assert!(
-        !text.contains("CΔ6"),
-        "two reading rows at 24: the third reading waits for a taller terminal\n{text}"
+        rows[2].contains("KEY"),
+        "KEY sits right under the title\n{text}"
     );
     assert_snapshot("packed-now-playing-80x24", &rows);
-
-    // Taller: every reading shows.
-    let (rows, _) = render(&model.frame(), &UiState::default(), 80, 30);
-    let text = text_of(&rows);
-    assert_words(&text, &["CΔ6", "ENHARMONIC"], &[], "packed 80x30");
 }
 
 #[test]
@@ -589,7 +588,9 @@ fn the_last_row_of_each_section_is_underlined_as_its_border() {
         underlined(find("KEYS:")),
         "the KEYS row is the field block's last row"
     );
-    assert!(underlined(find("Am7/C")), "the last reading row");
+    assert!(underlined(find("WATCHORD")), "the title bar's border");
+    assert!(underlined(find("CΔ6")), "the last reading row");
+    assert!(!underlined(find("Am7/C")), "a middle reading row is not");
     assert!(underlined(find("HISTORY") + 2), "the one history row");
     for control in ["READINGS", "HISTORY", "NOTES", "FUNCTION:"] {
         assert!(

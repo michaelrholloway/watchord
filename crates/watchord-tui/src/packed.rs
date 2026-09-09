@@ -233,7 +233,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
     let divider_x = x0 + 1 + LEFT_WIDTH;
 
     if frame.screen == Screen::AllNotes {
-        let body = Rect::new(x0 + 1, y0 + 3, area.width - 2, area.height - 6);
+        let body = Rect::new(x0 + 1, y0 + 2, area.width - 2, area.height - 5);
         canvas.frame_box(None);
         canvas.put(
             x0 + 2,
@@ -261,7 +261,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
     }
 
     // Body.
-    let body_top = y0 + 3;
+    let body_top = y0 + 2;
     let body_bottom = y1 - 3; // inclusive
     let left = Rect {
         x: x0 + 1,
@@ -482,8 +482,8 @@ impl Canvas<'_> {
 
     // MARK: Chrome
 
-    /// The outer box, the rule under the title, the rule over the foot, and,
-    /// on Now Playing, the column divider through the body.
+    /// The outer box, the underline that borders the title bar, the rule over
+    /// the foot, and, on Now Playing, the column divider through the body.
     fn frame_box(&mut self, divider_x: Option<u16>) {
         let area = self.area;
         let x0 = area.x;
@@ -493,22 +493,21 @@ impl Canvas<'_> {
         let style = ink();
         let horizontal: String = "─".repeat((area.width - 2) as usize);
         self.put(x0, y0, &format!("┌{horizontal}┐"), style);
-        self.put(x0, y0 + 2, &format!("├{horizontal}┤"), style);
         self.put(x0, y1 - 2, &format!("├{horizontal}┤"), style);
         self.put(x0, y1, &format!("└{horizontal}┘"), style);
-        for y in [y0 + 1, y1 - 1] {
+        for y in y0 + 1..y1 - 2 {
             self.put(x0, y, "│", style);
             self.put(x1, y, "│", style);
         }
-        for y in y0 + 3..y1 - 2 {
-            self.put(x0, y, "│", style);
-            self.put(x1, y, "│", style);
-        }
+        self.put(x1, y1 - 1, "│", style);
+        self.put(x0, y1 - 1, "│", style);
+        // The title bar's border is an underline on the title row, not a
+        // rule row, so the KEY row starts flush under it (Michael's ruling).
+        self.hairline_under(x0 + 1, y0 + 1, area.width - 2);
         if let Some(divider_x) = divider_x {
-            for y in y0 + 3..y1 - 2 {
+            for y in y0 + 2..y1 - 2 {
                 self.put(divider_x, y, "│", style);
             }
-            self.put(divider_x, y0 + 2, "┬", style);
             self.put(divider_x, y1 - 2, "┴", style);
         }
     }

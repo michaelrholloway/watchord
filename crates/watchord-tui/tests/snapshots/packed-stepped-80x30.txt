@@ -1,6 +1,5 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ WATCHORD                                                        HISTORY 7/64 │
-├──────────────────────────┬───────────────────────────────────────────────────┤
 │                          │KEY[K][M]:  C MAJOR                                │
 │                          │FUNCTION:   SUBDOMINANT                            │
 │           Dm9            │NUMERAL:    iim9                                   │
@@ -17,11 +16,12 @@
 │        ──────────        │Em7         E2   G2   B2   D3   iiim7   tonic      │
 │                          │A7          A2   C#3   E3   G3  VI7     V7/ii      │
 │        ──────────        │Dm9         D2   F2   A2   C3   iim9    subdominant│
-│                          │NOTES                                            ■ │
-│        ─────■────        │ add a note...                  SAVE[⏎] VIEW ALL[N]│
-│                          │CHORD       NOTE                                   │
-│        ──────────        │C7#9        great over a static vamp #hendrix #voi…│
-│            #■            │C7#9        two hands, sustain down ⏎ lean into th…│
+│                          │G13         G2   B2   D3   F3   V13     dominant   │
+│        ─────■────        │NOTES                                            ■ │
+│                          │ add a note...                  SAVE[⏎] VIEW ALL[N]│
+│        ──────────        │CHORD       NOTE                                   │
+│            #■            │C7#9        great over a static vamp #hendrix #voi…│
+│                          │C7#9        two hands, sustain down ⏎ lean into th…│
 │                          │C7#9        the Hendrix voicing, low and wide      │
 │                          │                                                   │
 │                          │                                                   │
