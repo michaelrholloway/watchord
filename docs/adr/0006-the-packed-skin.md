@@ -39,19 +39,21 @@ serves every skin.
 
 **Terminal departures from the frame**, with reasons:
 
-- **The headline and the staff are pictures where the terminal can show one.**
-  A terminal has one type size, so a larger headline in the same face is only
-  possible as a picture placed in the cell grid — the kitty graphics protocol
-  (Ghostty, kitty, WezTerm), sixel, or iTerm2. `ratatui-image` asks the
-  terminal what it speaks before the alternate screen opens. With a picture:
-  the headline is JetBrains Mono Bold at 1.1× the cell height, lime, two rows
-  tall; the staff is drawn at pixel size with lines half a cell apart, square
-  heads centred on their line or their space, italic sharps centred on their
-  head, and short ledger lines out to the farthest note — the design's
-  geometry, exactly. The two font files are embedded (SIL OFL 1.1,
-  `assets/OFL.txt`). Michael ruled the block figure out for this skin. A
-  terminal with none of the protocols gets one bold line and the text staff.
-  Known cost: each new picture stays in the terminal's memory for the session.
+- **The headline is one bold line and the staff is text, in every terminal.**
+  Superseded 2026-09-09, the same day it was written. For one day the headline
+  and the staff drew as pictures (kitty graphics, sixel, iTerm2) where the
+  terminal could show one, with the design's geometry exactly. Two screenshots
+  of one session — macOS Terminal beside cmux — showed the price: the same
+  chord looked like two different apps, because the picture path and the text
+  path are two renderers of one value and never agree. Windows Terminal draws
+  sixel only from 1.22 and never kitty; the old console and GNOME Terminal
+  draw neither; so almost every Windows and Linux user saw the text path
+  anyway. The picture path was also 52 of the tui crate's 137 dependencies,
+  555 KB of embedded fonts, and an image per chord that the terminal held
+  until exit. Michael ruled: one renderer, text, everywhere. `graphics.rs`,
+  `ratatui-image`, `image`, `ab_glyph` and the fonts are gone. A terminal has
+  one type size, so the headline is the body size in lime bold; Michael ruled
+  the block figure out for this skin.
 - The text staff is nine rows a clef, one row per position, so every head sits
   exactly on its line or in its space. Two rows separate the staves; spare rows
   go above and below. The half-row scheme tried in between could not place a

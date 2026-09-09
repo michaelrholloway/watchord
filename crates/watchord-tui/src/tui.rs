@@ -25,7 +25,6 @@ use ratatui::backend::CrosstermBackend;
 use watchord_model::{AppModel, Frame, Screen};
 
 use crate::export;
-use crate::graphics::Graphics;
 use crate::screens::{self, Hits, ScrollTarget, UiState};
 use crate::{Skin, packed, plain};
 
@@ -398,18 +397,12 @@ fn run_export(
 }
 
 /// Draws one frame of `skin`. Returns what the mouse can hit in it.
-fn draw(
-    target: &mut ratatui::Frame,
-    skin: Skin,
-    model: &AppModel,
-    ui: &UiState,
-    graphics: Option<&mut Graphics>,
-) -> Hits {
+fn draw(target: &mut ratatui::Frame, skin: Skin, model: &AppModel, ui: &UiState) -> Hits {
     let frame = model.frame();
     match skin {
         Skin::Push => screens::draw(target, &frame, ui),
         Skin::Plain => plain::draw(target, &frame, ui),
-        Skin::Packed => packed::draw_with(target, &frame, ui, graphics),
+        Skin::Packed => packed::draw(target, &frame, ui),
     }
 }
 
@@ -421,13 +414,6 @@ pub fn run(mut model: AppModel, skin: Skin) -> io::Result<()> {
         previous_hook(info);
     }));
 
-    // The packed skin asks the terminal for picture support before the
-    // alternate screen: the query reads the terminal's reply from stdin.
-    let mut graphics = if skin == Skin::Packed {
-        Graphics::detect()
-    } else {
-        None
-    };
     let guard = Guard::enter()?;
     let mut terminal: Terminal<CrosstermBackend<Stdout>> =
         Terminal::new(CrosstermBackend::new(io::stdout()))?;
@@ -438,7 +424,7 @@ pub fn run(mut model: AppModel, skin: Skin) -> io::Result<()> {
     model.start();
     let mut frames: u64 = 0;
     loop {
-        terminal.draw(|target| hits = draw(target, skin, &model, &ui, graphics.as_mut()))?;
+        terminal.draw(|target| hits = draw(target, skin, &model, &ui))?;
         frames += 1;
         if panic_test && frames > 2 {
             panic!("{PANIC_TEST_VAR} is set: proving the terminal restores");

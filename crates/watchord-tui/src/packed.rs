@@ -20,14 +20,11 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::Widget;
-use ratatui_image::Image;
 use unicode_width::UnicodeWidthStr;
 use watchord_model::notes::tags_of;
 use watchord_model::{Frame, FrameState, Screen};
 use watchord_theory::staff::{Clef, StaffNote};
 
-use crate::graphics::Graphics;
 use crate::push::Token;
 use crate::screens::{Drawn, Hits, ScrollTarget, UiState};
 
@@ -118,10 +115,9 @@ const TOO_SMALL: &str = "watchord needs 80×24";
 const LEFT_WIDTH: u16 = 26;
 /// The headline box's rows. The staff box takes the rest of the left panel.
 const HEADLINE_ROWS: u16 = 7;
-/// A five-line staff in text: nine rows, one per position — a line on each
-/// even row, a space on each odd row — so every head sits exactly on its
-/// line or in its space. This is the fallback for a terminal that cannot
-/// show pictures; with pictures the staff is drawn at pixel size instead.
+/// A five-line staff: nine rows, one per position — a line on each even
+/// row, a space on each odd row — so every head sits exactly on its line or
+/// in its space. Text alone, so every terminal draws the same staff.
 const STAFF_ROWS: u16 = 9;
 /// A note head.
 const HEAD: &str = "■";
@@ -213,41 +209,19 @@ fn allocate(rows: u16, readings: usize, history: usize, notes: usize) -> Layout 
 
 // MARK: - Entry
 
-/// Draws the whole frame with text alone. Returns what the mouse can hit in it.
+/// Draws the whole frame. Returns what the mouse can hit in it.
 pub fn draw(target: &mut ratatui::Frame, frame: &Frame, ui: &UiState) -> Hits {
-    draw_with(target, frame, ui, None)
-}
-
-/// Draws the whole frame, the headline and the staff as pictures when the
-/// terminal can show them. Returns what the mouse can hit in it.
-pub fn draw_with(
-    target: &mut ratatui::Frame,
-    frame: &Frame,
-    ui: &UiState,
-    graphics: Option<&mut Graphics>,
-) -> Hits {
     let area = target.area();
     let buf = target.buffer_mut();
-    let drawn = draw_into_with(area, buf, frame, ui, graphics);
+    let drawn = draw_into(area, buf, frame, ui);
     if let Some(position) = drawn.cursor {
         target.set_cursor_position(position);
     }
     drawn.hits
 }
 
-/// Draws the whole frame into a buffer, text alone.
-pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> Drawn {
-    draw_into_with(area, buf, frame, ui, None)
-}
-
 /// Draws the whole frame into a buffer.
-pub fn draw_into_with(
-    area: Rect,
-    buf: &mut Buffer,
-    frame: &Frame,
-    ui: &UiState,
-    graphics: Option<&mut Graphics>,
-) -> Drawn {
+pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> Drawn {
     buf.set_style(area, ink());
     if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
         Canvas { buf, area }.put(area.x, area.y, TOO_SMALL, dim());
@@ -305,7 +279,7 @@ pub fn draw_into_with(
         width: x1 - divider_x - 1,
         height: left.height,
     };
-    canvas.left_panel(left, frame, graphics);
+    canvas.left_panel(left, frame);
     let cursor = canvas.right_panel(right, frame, ui, &mut hits);
 
     // Foot.
@@ -586,14 +560,13 @@ impl Canvas<'_> {
 
     // MARK: Left panel
 
-    /// The headline box over the staff box, a rule between them. With
-    /// pictures, the headline and the staff draw at pixel size.
-    fn left_panel(&mut self, left: Rect, frame: &Frame, mut graphics: Option<&mut Graphics>) {
+    /// The headline box over the staff box, a rule between them.
+    fn left_panel(&mut self, left: Rect, frame: &Frame) {
         let headline = Rect {
             height: HEADLINE_ROWS,
             ..left
         };
-        self.headline_box(headline, frame, graphics.as_deref_mut());
+        self.headline_box(headline, frame);
 
         let rule_y = left.y + HEADLINE_ROWS;
         self.rule(left.x, rule_y, LEFT_WIDTH);
@@ -603,33 +576,13 @@ impl Canvas<'_> {
             height: left.height - HEADLINE_ROWS - 1,
             ..left
         };
-        let drawn = match graphics {
-            Some(graphics) => {
-                let picture = Rect {
-                    x: staff.x + 1,
-                    width: staff.width - 2,
-                    ..staff
-                };
-                match graphics.staff(&frame.annotations.staff, picture) {
-                    Some(protocol) => {
-                        Image::new(protocol).render(picture, self.buf);
-                        true
-                    }
-                    None => false,
-                }
-            }
-            None => false,
-        };
-        if !drawn {
-            self.staff_box(staff, frame);
-        }
+        self.staff_box(staff, frame);
     }
 
-    /// The name in lime — as a picture in the terminal's own face at a
-    /// larger size where the terminal can show one, else one bold line —
-    /// with `≈` before it when the fit is nearest; the spoken form under it;
-    /// the fit detail under that. Declined: `—` and the reason.
-    fn headline_box(&mut self, box_: Rect, frame: &Frame, graphics: Option<&mut Graphics>) {
+    /// The name in lime, one bold line, with `≈` before it when the fit is
+    /// nearest; the spoken form under it; the fit detail under that.
+    /// Declined: `—` and the reason.
+    fn headline_box(&mut self, box_: Rect, frame: &Frame) {
         let inner_x = box_.x + 1;
         let inner_w = box_.width - 2;
         let name = match frame.headline.as_ref() {
@@ -639,22 +592,9 @@ impl Canvas<'_> {
             },
             None => ABSENT.to_string(),
         };
-        // Two rows for the name, one blank, then the words. As a picture the
-        // name fills the two rows; as text it sits on the second.
-        let picture = Rect::new(inner_x, box_.y + 1, inner_w, 2);
-        let drawn = match (graphics, frame.headline.as_ref()) {
-            (Some(graphics), Some(_)) => match graphics.headline(&name, picture) {
-                Some(protocol) => {
-                    Image::new(protocol).render(picture, self.buf);
-                    true
-                }
-                None => false,
-            },
-            _ => false,
-        };
-        if !drawn {
-            self.put_centered(inner_x, box_.y + 2, inner_w, &name, lime_bold());
-        }
+        // Two rows for the name (it sits on the second), one blank, then the
+        // words.
+        self.put_centered(inner_x, box_.y + 2, inner_w, &name, lime_bold());
         let y = box_.y + 4;
 
         let below: Vec<(String, Style)> = match frame.headline.as_ref() {
@@ -679,7 +619,7 @@ impl Canvas<'_> {
         }
     }
 
-    /// The text staff, for a terminal without pictures: five lines a clef,
+    /// The staff: five lines a clef,
     /// one row per position, `■` heads with their accidental in the cell to
     /// the left, short ledger lines out to the farthest note. Treble alone
     /// unless the box has room for both clefs and the gap between; the spare
