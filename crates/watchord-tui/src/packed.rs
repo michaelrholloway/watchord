@@ -6,7 +6,8 @@
 //! the staff box. Right, on one column grid: the KEY, FUNCTION, NUMERAL and
 //! KEYS rows; the READINGS table; the HISTORY table; the NOTES section with
 //! the field and the saved notes. Section headers are rows filled `#1E1E1E`,
-//! flush under the section above them; the fill is the border.
+//! flush under the section above them; the last row of each section carries
+//! an underline, which is the design's section border at no cost in rows.
 //!
 //! What the frame carries and the skin does not draw stays in the frame:
 //! drill, settle, the sostenuto and soft pedals, score, root, claimed,
@@ -159,7 +160,7 @@ const HISTORY_MIN: usize = 1;
 const NOTES_MIN: usize = 4;
 // No rule rows between sections. Michael ruled them out: a rule row is a
 // whole terminal row, and it reads as a gap above the header, not as a
-// border. The header's own fill is the separator.
+// border. The border is an underline on the section's last row instead.
 
 /// How the right panel's body rows are spent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -416,6 +417,21 @@ impl Canvas<'_> {
         let text = cut(text, width as usize);
         let pad = (width as usize).saturating_sub(text.width()) / 2;
         self.put(x + pad as u16, y, &text, style);
+    }
+
+    /// A hairline under `width` cells at `(x, y)`: every cell underlined in
+    /// ink, whatever it holds. The line sits at the foot of the row, so the
+    /// next section's header starts flush against it and no row is spent —
+    /// the design's one-pixel section border, in a terminal (ADR-0006).
+    fn hairline_under(&mut self, x: u16, y: u16, width: u16) {
+        for column in x..x + width {
+            let cell = &mut self.buf[(column, y)];
+            let style = cell
+                .style()
+                .add_modifier(Modifier::UNDERLINED)
+                .underline_color(INK.color());
+            cell.set_style(style);
+        }
     }
 
     /// A rule across `width` cells at `(x, y)`, joined to the vertical lines
@@ -776,10 +792,13 @@ impl Canvas<'_> {
             &frame.keys,
             on_fill(),
         );
+        self.hairline_under(x, y, w);
         y += 1;
 
         y = self.readings(x, y, w, layout.readings, frame, ui, hits);
+        self.hairline_under(x, y - 1, w);
         y = self.history(x, y, w, layout.history, frame);
+        self.hairline_under(x, y - 1, w);
 
         // NOTES.
         self.section_header(x, y, w, "NOTES", PINK);

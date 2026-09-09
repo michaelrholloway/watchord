@@ -560,6 +560,45 @@ fn all_notes_selection_shows_edit_and_del_and_search_filters() {
     assert!(!text.contains("type to search"), "{text}");
 }
 
+/// The section border is an underline on the last row of each section:
+/// the KEYS row, the last reading, the last history entry. The header row
+/// under each is the control — no underline.
+#[test]
+fn the_last_row_of_each_section_is_underlined_as_its_border() {
+    use ratatui::style::Modifier;
+    let model = fake_model(false);
+    let frame = model.frame();
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("a test terminal");
+    terminal
+        .draw(|target| {
+            packed::draw(target, &frame, &UiState::default());
+        })
+        .expect("a frame");
+    let buffer = terminal.backend().buffer();
+    let row_text = |y: u16| -> String { (0..80).map(|x| buffer[(x, y)].symbol()).collect() };
+    let find = |needle: &str| -> u16 {
+        (0..24)
+            .find(|&y| row_text(y).contains(needle))
+            .unwrap_or_else(|| panic!("{needle} row"))
+    };
+    let underlined = |y: u16| {
+        // Every cell of the right panel, x 28..79.
+        (28..79).all(|x| buffer[(x, y)].modifier.contains(Modifier::UNDERLINED))
+    };
+    assert!(
+        underlined(find("KEYS:")),
+        "the KEYS row is the field block's last row"
+    );
+    assert!(underlined(find("Am7/C")), "the last reading row");
+    assert!(underlined(find("HISTORY") + 2), "the one history row");
+    for control in ["READINGS", "HISTORY", "NOTES", "FUNCTION:"] {
+        assert!(
+            !underlined(find(control)),
+            "{control} must not be underlined"
+        );
+    }
+}
+
 /// `2026-08-28 13:46` -> `YYYY-MM-DD HH:MM`, as the other skins' tests mask it.
 fn mask_times(rows: &[String]) -> Vec<String> {
     rows.iter()
