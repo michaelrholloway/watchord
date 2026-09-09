@@ -115,8 +115,17 @@ const TOO_SMALL: &str = "watchord needs 80×24";
 const LEFT_WIDTH: u16 = 26;
 /// The headline box's rows. The staff box takes the rest of the left panel.
 const HEADLINE_ROWS: u16 = 7;
-/// A five-line staff: five line rows and four space rows.
-const STAFF_ROWS: u16 = 9;
+/// A five-line staff: five rows, one per line. The spaces between lines have
+/// no row of their own — a note in a space straddles two line rows as a
+/// lower-half block over an upper-half block (Michael: *"reduce the spacing
+/// between the stave lines"*).
+const STAFF_ROWS: u16 = 5;
+/// A note head on a line.
+const HEAD: &str = "■";
+/// The two halves of a note head in a space: the lower half of the row above,
+/// the upper half of the row below.
+const HEAD_UPPER: &str = "▄";
+const HEAD_LOWER: &str = "▀";
 /// Rows between the treble and bass staves; the design's 32px at 20px a row.
 const STAFF_GAP: u16 = 2;
 /// Both clefs draw when the staff box has room for two staves and the gap.
@@ -359,8 +368,10 @@ fn scroll_to(selected: Option<usize>, visible: usize) -> usize {
     }
 }
 
-/// The rows one clef's window needs: the staff, widened to any ledger note.
-fn window_rows(notes: &[StaffNote], clef: Clef) -> u16 {
+/// The even (line) positions a clef's window spans: the staff, 0..=8,
+/// widened to the ledger line at or beyond the farthest note. A note in a
+/// space just outside the staff still needs the row past it to straddle.
+fn window(notes: &[StaffNote], clef: Clef) -> (i32, i32) {
     let rows: Vec<i32> = notes
         .iter()
         .filter(|n| n.clef == clef)
@@ -368,7 +379,21 @@ fn window_rows(notes: &[StaffNote], clef: Clef) -> u16 {
         .collect();
     let top = rows.iter().copied().max().unwrap_or(8).max(8);
     let bottom = rows.iter().copied().min().unwrap_or(0).min(0);
-    (top - bottom + 1) as u16
+    (round_even_down(bottom), round_even_up(top))
+}
+
+fn round_even_up(r: i32) -> i32 {
+    if r % 2 == 0 { r } else { r + 1 }
+}
+
+fn round_even_down(r: i32) -> i32 {
+    if r % 2 == 0 { r } else { r - 1 }
+}
+
+/// The rows one clef's window needs: one per line position.
+fn window_rows(notes: &[StaffNote], clef: Clef) -> u16 {
+    let (bottom, top) = window(notes, clef);
+    ((top - bottom) / 2 + 1) as u16
 }
 
 // MARK: - Canvas
@@ -615,9 +640,9 @@ impl Canvas<'_> {
         }
     }
 
-    /// The staff: five lines a clef as rules, `■` heads with their accidental
-    /// in the cell to their left, short ledger lines on every even row off the
-    /// staff out to the farthest note. Treble alone unless the box has room for both clefs and the gap
+    /// The staff: five lines a clef, one row each, `■` heads on lines and
+    /// half-block heads in the spaces, their accidental in the cell to the
+    /// left, short ledger lines out to the farthest note. Treble alone unless the box has room for both clefs and the gap
     /// between; the spare rows go above and below the pair.
     fn staff_box(&mut self, box_: Rect, frame: &Frame) {
         let notes = &frame.annotations.staff;
@@ -627,8 +652,8 @@ impl Canvas<'_> {
             return;
         }
         // Each clef asks for the rows its window needs; a low bass note asks
-        // for more than nine. A shortfall comes off the taller of the two
-        // first, never below nine.
+        // for more than five. A shortfall comes off the taller of the two
+        // first, never below five.
         let (mut t, mut b) = (
             window_rows(notes, Clef::Treble),
             window_rows(notes, Clef::Bass),
@@ -658,73 +683,82 @@ impl Canvas<'_> {
         self.staff(bass, Clef::Bass, notes);
     }
 
-    /// One clef in `box_`. Rows 0..=8 are the staff; the window widens for
-    /// ledger notes when there is room. When there is not, the empty edges
-    /// of the staff give way first, then the ledger note farthest from the
-    /// staff. Heads stack on one column; an accidental sits in the cell to
-    /// the left and never moves the head.
+    /// One clef in `box_`, one row per line position. The window covers the
+    /// staff and every ledger line out to the farthest note; when the box is
+    /// too small, the empty edges give way first, then the ledger row
+    /// farthest from the staff. Heads stack on one column; a head on a line
+    /// is `■`, a head in a space straddles the two line rows around it; an
+    /// accidental sits in the cell to the left and never moves the head.
     fn staff(&mut self, box_: Rect, clef: Clef, notes: &[StaffNote]) {
         let notes: Vec<&StaffNote> = notes.iter().filter(|n| n.clef == clef).collect();
         let rows = box_.height as i32;
         if rows <= 0 {
             return;
         }
-        let (note_min, note_max) = match (
-            notes.iter().map(|n| n.row).min(),
-            notes.iter().map(|n| n.row).max(),
-        ) {
-            (Some(min), Some(max)) => (min, max),
-            _ => (0, 8),
-        };
-        let mut top = note_max.max(8);
-        let mut bottom = note_min.min(0);
-        while top - bottom + 1 > rows {
-            if top > note_max {
-                top -= 1;
-            } else if bottom < note_min {
-                bottom += 1;
-            } else if -bottom >= top - 8 && bottom < 0 {
-                // Both edges hold a note: the ledger note farthest from the
-                // staff goes first, so a note on the staff never gives way
-                // to one two octaves under it.
-                bottom += 1;
+        let holds_at_or_above = |r: i32| notes.iter().any(|n| n.row >= r);
+        let holds_at_or_below = |r: i32| notes.iter().any(|n| n.row <= r);
+        let (mut bottom, mut top) = window(&notes.iter().map(|n| **n).collect::<Vec<_>>(), clef);
+        while (top - bottom) / 2 + 1 > rows {
+            if top > 8 && !holds_at_or_above(top - 1) {
+                top -= 2;
+            } else if bottom < 0 && (!holds_at_or_below(bottom + 1) || -bottom >= top - 8) {
+                // An empty bottom edge, or the ledger farthest from the staff.
+                bottom += 2;
+            } else if top > 8 {
+                top -= 2;
             } else {
-                top -= 1;
+                break;
             }
         }
         // Vertically centre the window when the box is taller than it.
-        let slack = rows - (top - bottom + 1);
+        let slack = rows - ((top - bottom) / 2 + 1);
         let y_top = box_.y as i32 + slack / 2;
+        let y_of = |line: i32| (y_top + (top - line) / 2) as u16;
         let line_x = box_.x + STAFF_LINE_X;
         let head_x = line_x + STAFF_LINE_WIDTH / 2;
         let line: String = "─".repeat(STAFF_LINE_WIDTH as usize);
-        for row in (bottom..=top).rev() {
-            let y = (y_top + (top - row)) as u16;
-            let on_staff = (0..=8).contains(&row);
-            if on_staff && row % 2 == 0 {
+
+        // Lines: the staff's five, and a short ledger line on every even
+        // position out to the farthest note, as on paper.
+        for r in (bottom..=top).step_by(2) {
+            let y = y_of(r);
+            if (0..=8).contains(&r) {
                 self.put(line_x, y, &line, ink());
+            } else if (r > 8 && holds_at_or_above(r)) || (r < 0 && holds_at_or_below(r)) {
+                let width = 2 * notes.iter().filter(|n| n.row == r).count().max(1) + 1;
+                self.put(head_x - 1, y, &"─".repeat(width), ink());
             }
-            let heads: Vec<&&StaffNote> = notes.iter().filter(|n| n.row == row).collect();
-            // Every even row off the staff between it and the farthest note
-            // is a ledger line, as on paper: a note on the second ledger line
-            // has the first one drawn above it too.
-            if !on_staff && row % 2 == 0 {
-                let ledger: String = "─".repeat(2 * heads.len().max(1) + 1);
-                self.put(head_x - 1, y, &ledger, ink());
-            }
-            if heads.is_empty() {
+        }
+
+        // Heads, lowest first; a second head on the same position (D3 beside
+        // D#3) sits two cells right, keeping the cell to its left for its
+        // accidental.
+        let mut positions: Vec<i32> = notes.iter().map(|n| n.row).collect();
+        positions.sort_unstable();
+        positions.dedup();
+        for r in positions {
+            if r < bottom || r > top {
                 continue;
             }
-            // Lowest first. The first head sits on the head column; a second
-            // head on the same row (D3 beside D#3) sits two cells right, so
-            // each keeps the cell to its left for its accidental.
+            let heads: Vec<&&StaffNote> = notes.iter().filter(|n| n.row == r).collect();
             for (index, head) in heads.iter().enumerate() {
                 let x = head_x + 2 * index as u16;
                 let accidental = head.spelled.accidental.symbol();
-                if !accidental.is_empty() {
-                    self.put(x - 1, y, accidental, bold());
+                if r % 2 == 0 {
+                    let y = y_of(r);
+                    self.put(x, y, HEAD, bold());
+                    if !accidental.is_empty() {
+                        self.put(x - 1, y, accidental, bold());
+                    }
+                } else {
+                    let upper = y_of(r + 1);
+                    let lower = y_of(r - 1);
+                    self.put(x, upper, HEAD_UPPER, bold());
+                    self.put(x, lower, HEAD_LOWER, bold());
+                    if !accidental.is_empty() {
+                        self.put(x - 1, upper, accidental, bold());
+                    }
                 }
-                self.put(x, y, SQUARE, bold());
             }
         }
     }

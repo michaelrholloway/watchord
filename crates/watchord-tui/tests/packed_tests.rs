@@ -319,7 +319,7 @@ fn a_taller_terminal_gives_the_lists_more_rows() {
 }
 
 #[test]
-fn both_clefs_draw_from_34_rows_and_treble_alone_below() {
+fn both_clefs_draw_when_the_box_has_room_and_treble_alone_below() {
     let model = rich_model();
     let frame = model.frame();
     // C7#9 as the Hendrix voicing spans both staves: 36 is deep in the bass.
@@ -339,7 +339,8 @@ fn both_clefs_draw_from_34_rows_and_treble_alone_below() {
             .map(|r| r.chars().take(27).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n");
-        (left.matches('■').count(), rows)
+        // A head on a line is one `■`; a head in a space is a `▀` under a `▄`.
+        (left.matches('■').count() + left.matches('▀').count(), rows)
     };
     let (heads_24, _) = heads_at(24);
     let (heads_34, rows_34) = heads_at(34);

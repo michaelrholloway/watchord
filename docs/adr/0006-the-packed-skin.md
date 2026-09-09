@@ -54,12 +54,15 @@ serves every skin.
 - Note heads are `■` on one column; an accidental sits in the cell to the left
   and never moves the head. Two heads on one row (D3 and D#3) sit two cells
   apart.
-- Treble staff only at 24 rows; both clefs from 34. A five-line staff is nine
-  terminal rows, and two do not fit in the ten-row box. Two rows separate the
-  staves (the design's 32px); the spare rows go above and below. Every even
-  row off the staff out to the farthest note carries a short ledger line, as
-  on paper. When notes outrun the box, the empty staff edges give way first,
-  then the ledger note farthest from the staff.
+- The staff is five rows a clef, one row per line; the spaces between lines
+  have no row. A head on a line is `■`; a head in a space straddles the two
+  line rows as a lower-half block over an upper-half block. Michael asked for
+  the lines closer together after a nine-row staff left the treble's top line
+  and the bass's low C off screen at 33 rows. Treble alone at 24 rows; both
+  clefs once the box holds twelve rows, two rows apart, spare rows above and
+  below. Every even position out to the farthest note carries a short ledger
+  line, as on paper. When notes outrun the box, empty edges give way first,
+  then the ledger row farthest from the staff.
 - The table grid is fixed from the left. FIT widens with the terminal up to 26
   cells; NUMERAL and FUNCTION follow it rather than hanging off the far edge.
 - The FIT column shows the tier word; the detail sits under the spoken name in

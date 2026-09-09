@@ -8,17 +8,17 @@
 │                          │NAME        ORIGIN     FIT      NUMERAL FUNCTION   │
 │                          │C6          HEADLINE   EXACT    —       —          │
 ├──────────────────────────┤Am7/C       REROOTED   EXACT    —       —          │
-│        ──────────        │CΔ6         ENHARMONIC EXACT    —       —          │
+│                          │CΔ6         ENHARMONIC EXACT    —       —          │
 │                          │HISTORY                                          ■ │
 │        ──────────        │NAME        KEYS                NUMERAL FUNCTION   │
-│                          │C6          C3   E3   G3   A3   —       —          │
-│        ──────────        │NOTES                                            ■ │
-│             ■            │ add a note...                  SAVE[⏎] VIEW ALL[N]│
+│        ──────────        │C6          C3   E3   G3   A3   —       —          │
+│        ─────▄────        │NOTES                                            ■ │
+│        ─────▀────        │ add a note...                  SAVE[⏎] VIEW ALL[N]│
 │        ─────■────        │CHORD       NOTE                                   │
-│                          │Am7         try it with the 9 on top               │
-│        ─────■────        │C6          sounds like the Rhodes … EDIT[E] DEL[D]│
+│            ─■─           │Am7         try it with the 9 on top               │
+│                          │C6          sounds like the Rhodes … EDIT[E] DEL[D]│
 │                          │                                                   │
-│            ─■─           │                                                   │
+│                          │                                                   │
 ├──────────────────────────┴───────────────────────────────────────────────────┤
 │ SUSTAIN: OFF ●    ARPEGGIO[A]: OFF ●    STATE: PLAYING ●      INPUT[I]: FAKE │
 └──────────────────────────────────────────────────────────────────────────────┘
