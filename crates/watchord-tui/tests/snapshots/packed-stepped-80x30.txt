@@ -2,28 +2,28 @@
 │ WATCHORD                                                        HISTORY 7/64 │
 ├──────────────────────────┬───────────────────────────────────────────────────┤
 │                          │KEY[K][M]:  C MAJOR                                │
-│     █▀▀▀▄ ▄▄▄▄▄ ▄██▄     │FUNCTION:   SUBDOMINANT                            │
-│     █▄▄▄▀ █ █ █  ▄▄▀     │NUMERAL:    iim9                                   │
-│                          │KEYS:       D2   F2   A2   C3   E3                 │
-│        D MINOR 9         ├───────────────────────────────────────────────────┤
+│                          │FUNCTION:   SUBDOMINANT                            │
+│           Dm9            │NUMERAL:    iim9                                   │
+│        D MINOR 9         │KEYS:       D2   F2   A2   C3   E3                 │
+│                          ├───────────────────────────────────────────────────┤
 │                          │READINGS                                         ■ │
 │                          │NAME        ORIGIN     FIT      NUMERAL FUNCTION   │
 ├──────────────────────────┤Dm9         HEADLINE   EXACT    iim9    subdominant│
-│                          │                                                   │
 │                          ├───────────────────────────────────────────────────┤
 │                          │HISTORY                                          ■ │
-│        ──────────        │NAME        KEYS                NUMERAL FUNCTION   │
-│                          │A7          A2   C#3   E3   G3  VI7     V7/ii      │
-│        ──────────        │                                                   │
-│                          │Dm9         D2   F2   A2   C3   iim9    subdominant│
-│        ──────────        │                                                   │
-│                          ├───────────────────────────────────────────────────┤
-│        ─────■────        │NOTES                                            ■ │
-│                          │ add a note...                  SAVE[⏎] VIEW ALL[N]│
-│        ──────────        │CHORD       NOTE                                   │
-│            #■            │C7#9        great over a static vamp #hendrix #voi…│
-│                          │C7#9        two hands, sustain down ⏎ lean into th…│
+│                          │NAME        KEYS                NUMERAL FUNCTION   │
+│        ──────────        │G7          G2  B2  D3  F3      V7      dominant   │
+│                          │Em7         E2  G2  B2  D3      iiim7   tonic      │
+│        ──────────        │A7          A2  C#3  E3  G3     VI7     V7/ii      │
+│                          │Dm9         D2  F2  A2  C3  E3  iim9    subdominant│
+│        ──────────        ├───────────────────────────────────────────────────┤
+│                          │NOTES                                            ■ │
+│        ─────■────        │ add a note...                  SAVE[⏎] VIEW ALL[N]│
+│                          │CHORD       NOTE                                   │
+│        ──────────        │C7#9        great over a static vamp #hendrix #voi…│
+│            #■            │C7#9        two hands, sustain down ⏎ lean into th…│
 │                          │C7#9        the Hendrix voicing, low and wide      │
+│                          │                                                   │
 │                          │                                                   │
 ├──────────────────────────┴───────────────────────────────────────────────────┤
 │ SUSTAIN: ON ●    ARPEGGIO[A]: ON ●    STATE: RELEASED ●       INPUT[I]: FAKE │

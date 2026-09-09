@@ -8,13 +8,13 @@
 │                          │READINGS                                         ■ │
 │                          │NAME        ORIGIN     FIT      NUMERAL FUNCTION   │
 │                          │—                                                  │
-├──────────────────────────┤                                                   │
-│        ──────────        │HISTORY                                          ■ │
-│                          │NAME        KEYS                NUMERAL FUNCTION   │
-│        ──────────        │—                                                  │
-│                          │NOTES                                            ■ │
-│        ──────────        │ play a chord to write a note   SAVE[⏎] VIEW ALL[N]│
-│                          │CHORD       NOTE                                   │
+├──────────────────────────┤HISTORY                                          ■ │
+│        ──────────        │NAME        KEYS                NUMERAL FUNCTION   │
+│                          │—                                                  │
+│        ──────────        │NOTES                                            ■ │
+│                          │ play a chord to write a note   SAVE[⏎] VIEW ALL[N]│
+│        ──────────        │CHORD       NOTE                                   │
+│                          │                                                   │
 │        ──────────        │                                                   │
 │                          │                                                   │
 │        ──────────        │                                                   │

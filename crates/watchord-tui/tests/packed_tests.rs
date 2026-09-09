@@ -283,19 +283,19 @@ fn a_taller_terminal_gives_the_lists_more_rows() {
     let frame = model.frame();
     let (rows, _) = render(&frame, &UiState::default(), 120, 40);
     let text = text_of(&rows);
-    // Nine history entries, spaced by a blank row so the chips do not touch:
-    // at 40 rows the newest seven show; at 50 all nine; at 24 only the newest.
+    // Nine history entries: at 40 rows they all show, one row each; at 24
+    // only the newest.
     let names: Vec<&str> = frame.history.iter().map(|e| e.name.as_str()).collect();
-    for name in &names[2..] {
+    for name in &names {
         assert!(text.contains(name), "{name}\n{text}");
     }
-    // A blank row between entries: G7's row is two below Dm7's.
+    // One row each, no blank between: G7's row is right under Dm7's.
     let row_of = |name: &str| {
         rows.iter()
             .position(|r| r.contains(&format!("│{name:<12}")))
             .unwrap_or_else(|| panic!("{name} row\n{text}"))
     };
-    assert_eq!(row_of("G7"), row_of("Dm7") + 2, "{text}");
+    assert_eq!(row_of("G7"), row_of("Dm7") + 1, "{text}");
     let (tall, _) = render(&frame, &UiState::default(), 120, 50);
     let tall_text = text_of(&tall);
     for name in &names {

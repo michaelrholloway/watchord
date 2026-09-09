@@ -18,15 +18,13 @@
 //! fills the same [`Hits`], and [`crate::tui`] reads them the same way.
 
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Paragraph, Widget};
 use unicode_width::UnicodeWidthStr;
 use watchord_model::notes::tags_of;
 use watchord_model::{Frame, FrameState, Screen};
 use watchord_theory::staff::{Clef, StaffNote};
 
-use crate::figure;
 use crate::push::Token;
 use crate::screens::{Drawn, Hits, ScrollTarget, UiState};
 
@@ -174,8 +172,8 @@ struct Layout {
 
 /// Spare rows beyond the minimums go, in order: to the section rules, to
 /// readings until every reading shows, to notes until every note shows, to
-/// history until every entry shows with a blank row between entries, then
-/// the rest to notes.
+/// history until every entry shows, then the rest to notes. Every row is one
+/// terminal row; nothing is double-spaced.
 fn allocate(rows: u16, readings: usize, history: usize, notes: usize) -> Layout {
     const FIXED: usize = 4 + 2 + 2 + 3;
     let variable = (rows as usize).saturating_sub(FIXED);
@@ -195,11 +193,17 @@ fn allocate(rows: u16, readings: usize, history: usize, notes: usize) -> Layout 
     let give = spare.min(notes.saturating_sub(layout.notes));
     layout.notes += give;
     spare -= give;
-    let spaced = (2 * history).saturating_sub(1);
-    let give = spare.min(spaced.saturating_sub(layout.history));
+    let give = spare.min(history.saturating_sub(layout.history));
     layout.history += give;
     spare -= give;
     layout.notes += spare;
+    // A list never holds a blank row above the next section's header: rows a
+    // short list cannot fill move down to the notes, at the foot of the panel.
+    let readings_used = layout.readings.min(readings.max(1));
+    let history_used = layout.history.min(history.max(1));
+    layout.notes += (layout.readings - readings_used) + (layout.history - history_used);
+    layout.readings = readings_used;
+    layout.history = history_used;
     layout
 }
 
@@ -559,10 +563,11 @@ impl Canvas<'_> {
         self.staff_box(staff, frame);
     }
 
-    /// The name large in lime — as the two-row headline figure (ADR-0003
-    /// (e)) when it fits the box, else as one bold line — with `≈` before it
-    /// when the fit is nearest; the spoken form under it; the fit detail
-    /// under that. Declined: `—` and the reason.
+    /// The name in lime bold on one line — a terminal has one type size, and
+    /// Michael ruled the block figure out for this skin (ticket #8, kitty
+    /// graphics, is the path to a larger headline) — with `≈` before it when
+    /// the fit is nearest; the spoken form under it; the fit detail under
+    /// that. Declined: `—` and the reason.
     fn headline_box(&mut self, box_: Rect, frame: &Frame) {
         let inner_x = box_.x + 1;
         let inner_w = box_.width - 2;
@@ -573,22 +578,9 @@ impl Canvas<'_> {
             },
             None => ABSENT.to_string(),
         };
-        let as_figure = frame.headline.is_some()
-            && figure::missing(&name).is_empty()
-            && figure::width(&name) <= inner_w as usize;
-        let mut y = box_.y + 1;
-        if as_figure {
-            let lines = figure::short(&name, lime_bold());
-            let rect = Rect::new(inner_x, y, inner_w, figure::SHORT_HEIGHT);
-            Paragraph::new(lines)
-                .alignment(Alignment::Center)
-                .render(rect, self.buf);
-            y += figure::SHORT_HEIGHT + 1;
-        } else {
-            y += 1;
-            self.put_centered(inner_x, y, inner_w, &name, lime_bold());
-            y += 1;
-        }
+        let name_y = box_.y + 2;
+        self.put_centered(inner_x, name_y, inner_w, &name, lime_bold());
+        let y = name_y + 1;
 
         let below: Vec<(String, Style)> = match frame.headline.as_ref() {
             Some(headline) => {
@@ -883,9 +875,8 @@ impl Canvas<'_> {
         from + rows as u16
     }
 
-    /// The HISTORY header, heads and rows, newest last. With room for it,
-    /// a blank row separates entries so their chips do not touch; spacing
-    /// comes before showing every entry. The window
+    /// The HISTORY header, heads and rows, newest last, one row each; the
+    /// keys as plain text so adjacent rows never collide. The window
     /// ends at the newest entry, unless the display is stepped to an older
     /// one that must stay in view; the stepped row is filled. Returns the
     /// row after the block.
@@ -895,10 +886,7 @@ impl Canvas<'_> {
         self.table_heads(x, y + 1, w, ["NAME", "KEYS", "", "NUMERAL", "FUNCTION"]);
         let from = y + 2;
         let total = frame.history.len();
-        // Space the entries whenever two spaced entries fit; at the 24-row
-        // minimum there is one row, so one entry.
-        let pitch = if rows >= 3 { 2 } else { 1 };
-        let visible = rows.div_ceil(pitch).min(total);
+        let visible = rows.min(total);
         let end = match frame.history_step {
             Some(step) => step.index.max(visible).min(total),
             None => total,
@@ -910,21 +898,23 @@ impl Canvas<'_> {
             .enumerate()
             .skip(start)
             .take(end - start);
-        for (row_y, (index, entry)) in (from..).step_by(pitch).zip(shown) {
+        for (row_y, (index, entry)) in (from..).zip(shown) {
             let stepped = frame.history_step.is_some_and(|s| s.index == index + 1);
-            let (text, chip) = if stepped {
+            let text = if stepped {
                 self.fill_row(x, row_y, w, on_fill());
-                (on_fill(), ink())
+                on_fill()
             } else {
-                (ink(), on_fill())
+                ink()
             };
             self.put_cut(x + COL_LABEL, row_y, &entry.name, COL_VALUE - 1, text);
-            self.chips(
-                x + COL_VALUE - 1,
+            // Plain text, not chips: rows are one terminal row apart, and a
+            // filled chip would touch the chip above and below it.
+            self.put_cut(
+                x + COL_VALUE,
                 row_y,
-                col_numeral - COL_VALUE,
                 &entry.keys,
-                chip,
+                col_numeral - COL_VALUE - 1,
+                text,
             );
             self.put_cut(
                 x + col_numeral,
@@ -1372,24 +1362,35 @@ mod tests {
             }
         );
         // 40 body rows: 22 spare. Rules 3, readings 1, notes 2 (six notes),
-        // history 16 (nine entries spaced: 17 rows), leaving 0.
+        // history 8 (nine entries), and the last 8 to notes.
         assert_eq!(
             allocate(40, 3, 9, 6),
             Layout {
                 rules: 3,
                 readings: 3,
-                history: 17,
-                notes: 6
+                history: 9,
+                notes: 14
             }
         );
-        // Nothing to show: every spare row still goes somewhere.
+        // A short list never keeps a blank row: one reading in a two-row
+        // minimum hands the other row to the notes.
+        assert_eq!(
+            allocate(18, 1, 0, 3),
+            Layout {
+                rules: 0,
+                readings: 1,
+                history: 1,
+                notes: 5
+            }
+        );
+        // Nothing to show: one `—` row each, and every spare row goes to notes.
         assert_eq!(
             allocate(30, 0, 0, 0),
             Layout {
                 rules: 3,
-                readings: 2,
+                readings: 1,
                 history: 1,
-                notes: 13
+                notes: 14
             }
         );
     }

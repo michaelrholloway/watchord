@@ -39,15 +39,17 @@ serves every skin.
 
 **Terminal departures from the frame**, with reasons:
 
-- The headline is the two-row block figure (ADR-0003 (e)) when the name fits
-  the 24-cell box — about five characters — and one bold line when it does not.
-  A terminal has one type size; the figure is the only way to draw it large.
+- The headline is one bold line. A terminal has one type size, and Michael
+  ruled the block figure (ADR-0003 (e)) out for this skin: *"it should just be
+  larger text in the same font."* Ticket #8, kitty graphics, is the path to
+  that.
 - The design's section borders are rule rows. A rule row costs a whole line, so
   at 24 rows there are none; the first three spare rows draw them, before any
-  list grows.
-- History entries take a blank row between them whenever two spaced entries
-  fit, so the key chips of adjacent rows do not touch. Spacing comes before
-  showing every entry.
+  list grows. A header sits flush under its rule: a list never keeps a blank
+  row, and rows it cannot fill move to the notes at the foot of the panel.
+- Every row is one terminal row; nothing is double-spaced. The history's keys
+  are plain text rather than filled chips, because filled chips in adjacent
+  rows touch.
 - Note heads are `■` on one column; an accidental sits in the cell to the left
   and never moves the head. Two heads on one row (D3 and D#3) sit two cells
   apart.

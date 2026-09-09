@@ -11,7 +11,7 @@
 ├──────────────────────────┤C13/E       REROOTED   MISSING… —       —          │
 │                          │HISTORY                                          ■ │
 │        ──────────        │NAME        KEYS                NUMERAL FUNCTION   │
-│                          │Cm7/E       E3   C4   A#4   D5  —       —          │
+│                          │Cm7/E       E3  C4  A#4  D5  A5 —       —          │
 │        ──────────        │NOTES                                            ■ │
 │             ■            │ add a note...                  SAVE[⏎] VIEW ALL[N]│
 │        ──────────        │CHORD       NOTE                                   │
