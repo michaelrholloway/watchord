@@ -55,8 +55,9 @@ serves every skin.
   and never moves the head. Two heads on one row (D3 and D#3) sit two cells
   apart.
 - The staff is five rows a clef, one row per line; the spaces between lines
-  have no row. A head on a line is `■`; a head in a space straddles the two
-  line rows as a lower-half block over an upper-half block. Michael asked for
+  have no row. A head on a line is `■`; a head in a space is an upper-half
+  block in the row of the line below it, so it sits just above that line. (A
+  head split across two rows read as two notes.) Michael asked for
   the lines closer together after a nine-row staff left the treble's top line
   and the bass's low C off screen at 33 rows. Treble alone at 24 rows; both
   clefs once the box holds twelve rows, two rows apart, spare rows above and

@@ -18,12 +18,12 @@
 │        ──────────        │A7          A2   C#3   E3   G3                   VI7     V7/ii                             │
 │        ──────────        │Dm9         D2   F2   A2   C3   E3               iim9    subdominant                       │
 │        ─────■────        │G13         G2   B2   D3   F3   E4               V13     dominant                          │
-│        ────#▄────        │C7#9        C1   E2   A#2   D#3   G3             I7#9    V7/IV                             │
-│             ▀            │NOTES                                                                                    ■ │
+│        ──────────        │C7#9        C1   E2   A#2   D#3   G3             I7#9    V7/IV                             │
+│            #▀            │NOTES                                                                                    ■ │
 │                          │ add a note...                                                          SAVE[⏎] VIEW ALL[N]│
 │                          │CHORD       NOTE                                                                           │
 │        ────#■────        │C7#9        great over a static vamp #hendrix #voicing                                     │
-│        ─────▄────        │C7#9        two hands, sustain down ⏎ lean into the #9 on top                              │
+│        ──────────        │C7#9        two hands, sustain down ⏎ lean into the #9 on top                              │
 │        ─────▀────        │C7#9        the Hendrix voicing, low and wide                                              │
 │        ──────────        │                                                                                           │
 │        ──────────        │                                                                                           │

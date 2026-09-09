@@ -339,7 +339,7 @@ fn both_clefs_draw_when_the_box_has_room_and_treble_alone_below() {
             .map(|r| r.chars().take(27).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n");
-        // A head on a line is one `■`; a head in a space is a `▀` under a `▄`.
+        // A head on a line is one `■`; a head in a space is one `▀`.
         (left.matches('■').count() + left.matches('▀').count(), rows)
     };
     let (heads_24, _) = heads_at(24);

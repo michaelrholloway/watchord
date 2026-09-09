@@ -12,7 +12,7 @@
 │                          │HISTORY                                          ■ │
 │        ──────────        │NAME        KEYS                NUMERAL FUNCTION   │
 │        ──────────        │C6          C3   E3   G3   A3   —       —          │
-│        ─────▄────        │NOTES                                            ■ │
+│        ──────────        │NOTES                                            ■ │
 │        ─────▀────        │ add a note...                  SAVE[⏎] VIEW ALL[N]│
 │        ─────■────        │CHORD       NOTE                                   │
 │            ─■─           │Am7         try it with the 9 on top               │

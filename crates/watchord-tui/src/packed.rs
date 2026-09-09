@@ -115,17 +115,16 @@ const TOO_SMALL: &str = "watchord needs 80×24";
 const LEFT_WIDTH: u16 = 26;
 /// The headline box's rows. The staff box takes the rest of the left panel.
 const HEADLINE_ROWS: u16 = 7;
-/// A five-line staff: five rows, one per line. The spaces between lines have
-/// no row of their own — a note in a space straddles two line rows as a
-/// lower-half block over an upper-half block (Michael: *"reduce the spacing
-/// between the stave lines"*).
+/// A five-line staff: five rows, one per line, the line through the middle
+/// of its row. The spaces between lines have no row of their own: a note in
+/// a space is an upper-half block in the row of the line below it, so it sits
+/// just above that line (Michael: *"reduce the spacing between the stave
+/// lines"*; a head split across two rows read as two notes).
 const STAFF_ROWS: u16 = 5;
 /// A note head on a line.
 const HEAD: &str = "■";
-/// The two halves of a note head in a space: the lower half of the row above,
-/// the upper half of the row below.
-const HEAD_UPPER: &str = "▄";
-const HEAD_LOWER: &str = "▀";
+/// A note head in a space: the upper half of the row of the line below.
+const SPACE_HEAD: &str = "▀";
 /// Rows between the treble and bass staves; the design's 32px at 20px a row.
 const STAFF_GAP: u16 = 2;
 /// Both clefs draw when the staff box has room for two staves and the gap.
@@ -369,8 +368,8 @@ fn scroll_to(selected: Option<usize>, visible: usize) -> usize {
 }
 
 /// The even (line) positions a clef's window spans: the staff, 0..=8,
-/// widened to the ledger line at or beyond the farthest note. A note in a
-/// space just outside the staff still needs the row past it to straddle.
+/// widened to the line row each ledger note draws in. A space note draws in
+/// the row of the line below it, so both ends round down to even.
 fn window(notes: &[StaffNote], clef: Clef) -> (i32, i32) {
     let rows: Vec<i32> = notes
         .iter()
@@ -379,11 +378,7 @@ fn window(notes: &[StaffNote], clef: Clef) -> (i32, i32) {
         .collect();
     let top = rows.iter().copied().max().unwrap_or(8).max(8);
     let bottom = rows.iter().copied().min().unwrap_or(0).min(0);
-    (round_even_down(bottom), round_even_up(top))
-}
-
-fn round_even_up(r: i32) -> i32 {
-    if r % 2 == 0 { r } else { r + 1 }
+    (round_even_down(bottom), round_even_down(top))
 }
 
 fn round_even_down(r: i32) -> i32 {
@@ -641,8 +636,8 @@ impl Canvas<'_> {
     }
 
     /// The staff: five lines a clef, one row each, `■` heads on lines and
-    /// half-block heads in the spaces, their accidental in the cell to the
-    /// left, short ledger lines out to the farthest note. Treble alone unless the box has room for both clefs and the gap
+    /// half-block heads just above the line below a space, their accidental
+    /// in the cell to the left, short ledger lines out to the farthest note. Treble alone unless the box has room for both clefs and the gap
     /// between; the spare rows go above and below the pair.
     fn staff_box(&mut self, box_: Rect, frame: &Frame) {
         let notes = &frame.annotations.staff;
@@ -687,8 +682,9 @@ impl Canvas<'_> {
     /// staff and every ledger line out to the farthest note; when the box is
     /// too small, the empty edges give way first, then the ledger row
     /// farthest from the staff. Heads stack on one column; a head on a line
-    /// is `■`, a head in a space straddles the two line rows around it; an
-    /// accidental sits in the cell to the left and never moves the head.
+    /// is `■`, a head in a space is an upper-half block just above the line
+    /// below it; an accidental sits in the cell to the left and never moves
+    /// the head.
     fn staff(&mut self, box_: Rect, clef: Clef, notes: &[StaffNote]) {
         let notes: Vec<&StaffNote> = notes.iter().filter(|n| n.clef == clef).collect();
         let rows = box_.height as i32;
@@ -751,12 +747,12 @@ impl Canvas<'_> {
                         self.put(x - 1, y, accidental, bold());
                     }
                 } else {
-                    let upper = y_of(r + 1);
-                    let lower = y_of(r - 1);
-                    self.put(x, upper, HEAD_UPPER, bold());
-                    self.put(x, lower, HEAD_LOWER, bold());
+                    // In the space: the upper half of the row of the line
+                    // below, so the head sits just above that line.
+                    let y = y_of(r - 1);
+                    self.put(x, y, SPACE_HEAD, bold());
                     if !accidental.is_empty() {
-                        self.put(x - 1, upper, accidental, bold());
+                        self.put(x - 1, y, accidental, bold());
                     }
                 }
             }
