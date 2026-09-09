@@ -240,15 +240,11 @@ fn now_playing_at_80x24_draws_the_design() {
         &[
             "C6",
             "C MAJOR 6",
-            "Am7",
-            "REROOTED",
             "EXACT",
             "C3",
             "A3",
             "STATE: PLAYING",
             "INPUT[I]: FAKE",
-            "sounds like the Rhodes on Voodoo",
-            "try it with the 9 on top",
             "CHORD",
             "NOTE",
         ],
@@ -258,22 +254,52 @@ fn now_playing_at_80x24_draws_the_design() {
     assert_words(&text, &CHROME, &[], "packed 80x24 chrome");
     assert_eq!(rows.len(), 24);
     assert!(rows.iter().all(|r| r.chars().count() <= 80));
-    // Two note rows, a field, and VIEW ALL as the one tab.
-    assert_eq!(hits.note_rows.len(), 2);
+    // At 24 rows the lists are at their floor: one reading, one history
+    // entry, no note rows. The field and VIEW ALL are still there.
+    assert!(hits.note_rows.is_empty());
     assert!(hits.field.is_some());
     assert_eq!(hits.tabs.len(), 1);
     assert_eq!(hits.tabs[0].1, Screen::AllNotes);
     // Nothing is selected, so no DEL cell is drawn.
     assert!(hits.delete_cells.is_empty());
-    // The title bar's border is an underline, not a rule row, so 24 rows
-    // hold 19 body rows and the third reading fits.
-    assert_words(&text, &["CΔ6", "ENHARMONIC"], &[], "packed 80x24 readings");
-    assert_eq!(rows[1].trim_matches('│').trim(), "WATCHORD", "{}", rows[1]);
+    // The title heads the left column; the headline is right under it; the
+    // rule under the headline meets the staff column's divider.
+    assert!(rows[1].starts_with("│ WATCHORD"), "{}", rows[1]);
+    assert!(rows[2].starts_with("│ C6 "), "{}", rows[2]);
+    assert!(rows[3].starts_with("│ C MAJOR 6"), "{}", rows[3]);
     assert!(
-        rows[2].contains("KEY"),
-        "KEY sits right under the title\n{text}"
+        rows[4].starts_with("├───") && rows[4].contains("┤"),
+        "{}",
+        rows[4]
     );
+    assert!(
+        rows[5].starts_with("│KEY"),
+        "KEY sits right under the rule\n{text}"
+    );
+    // The staff column: the divider runs from the top border to the foot
+    // rule, and staff lines sit right of it.
+    assert!(rows[0].contains('┬'), "{}", rows[0]);
+    assert!(rows[21].contains('┴'), "{}", rows[21]);
+    assert!(rows[1].chars().nth(59) == Some('│'), "{}", rows[1]);
     assert_snapshot("packed-now-playing-80x24", &rows);
+
+    // Four rows taller, the three readings and both notes fit.
+    let (rows, hits) = render(&model.frame(), &UiState::default(), 80, 28);
+    let text = text_of(&rows);
+    assert_words(
+        &text,
+        &[
+            "Am7",
+            "REROOTED",
+            "CΔ6",
+            "ENHARMONIC",
+            "sounds like the Rhodes on Voodoo",
+            "try it with the 9 on top",
+        ],
+        &OFF_SCREEN,
+        "packed 80x28",
+    );
+    assert_eq!(hits.note_rows.len(), 2);
 }
 
 #[test]
@@ -332,15 +358,16 @@ fn both_clefs_draw_when_the_box_has_room_and_treble_alone_below() {
     assert!(bass_notes > 0, "the fixture must have a bass note");
     let heads_at = |height: u16| {
         let (rows, _) = render(&frame, &UiState::default(), 80, height);
-        let left: String = rows
+        // The staff column: right of the divider at x 59, title row to the
+        // row above the foot rule.
+        let staff: String = rows
             .iter()
-            .skip(3)
-            .take(height as usize - 6)
-            .map(|r| r.chars().take(27).collect::<String>())
+            .skip(1)
+            .take(height as usize - 4)
+            .map(|r| r.chars().skip(60).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n");
-        // A head on a line is one `■`; a head in a space is one `▀`.
-        (left.matches('■').count() + left.matches('▀').count(), rows)
+        (staff.matches('■').count(), rows)
     };
     let (heads_24, _) = heads_at(24);
     let (heads_34, rows_34) = heads_at(34);
@@ -373,15 +400,11 @@ fn nearest_marks_the_name_and_writes_the_detail() {
     let model = nearest_model();
     let (rows, _) = render(&model.frame(), &UiState::default(), 80, 24);
     let text = text_of(&rows);
-    assert_words(
-        &text,
-        &["≈ Cm7", "NEAREST", "MISSING"],
-        &[],
-        "packed nearest",
-    );
+    assert_words(&text, &["≈ Cm7", "NEAREST"], &[], "packed nearest");
     assert_snapshot("packed-nearest-80x24", &rows);
-    // Wider, the FIT column takes the slack and the detail shows in full.
-    let (rows, _) = render(&model.frame(), &UiState::default(), 120, 24);
+    // Wider and taller, the second reading shows, the FIT column takes the
+    // slack, and its detail shows in full.
+    let (rows, _) = render(&model.frame(), &UiState::default(), 120, 28);
     let text = text_of(&rows);
     assert_words(&text, &["MISSING ·no5 ·no11"], &[], "packed nearest 120");
 }
@@ -439,7 +462,7 @@ fn a_selected_note_shows_edit_and_del_and_a_del_hit() {
         selected_now_playing: Some(1),
         ..UiState::default()
     };
-    let (rows, hits) = render(&model.frame(), &ui, 80, 24);
+    let (rows, hits) = render(&model.frame(), &ui, 80, 28);
     let text = text_of(&rows);
     assert_words(&text, &["EDIT[E]", "DEL[D]"], &[], "packed selected");
     assert_eq!(hits.delete_cells.len(), 1);
@@ -452,7 +475,7 @@ fn a_selected_note_shows_edit_and_del_and_a_del_hit() {
         .take(rect.width as usize)
         .collect();
     assert_eq!(cell, "DEL[D]");
-    assert_snapshot("packed-selected-80x24", &rows);
+    assert_snapshot("packed-selected-80x28", &rows);
 }
 
 #[test]
@@ -560,15 +583,15 @@ fn all_notes_selection_shows_edit_and_del_and_search_filters() {
     assert!(!text.contains("type to search"), "{text}");
 }
 
-/// The section border is an underline on the last row of each section:
-/// the KEYS row, the last reading, the last history entry. The header row
-/// under each is the control — no underline.
+/// One blank row divides two sections: after the KEYS row, after the last
+/// reading, after the last history entry. Nothing is underlined any more
+/// (the earlier border), and the header rows are the control: not blank.
 #[test]
-fn the_last_row_of_each_section_is_underlined_as_its_border() {
+fn a_blank_row_divides_two_sections_and_nothing_is_underlined() {
     use ratatui::style::Modifier;
     let model = fake_model(false);
     let frame = model.frame();
-    let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("a test terminal");
+    let mut terminal = Terminal::new(TestBackend::new(80, 28)).expect("a test terminal");
     terminal
         .draw(|target| {
             packed::draw(target, &frame, &UiState::default());
@@ -577,28 +600,22 @@ fn the_last_row_of_each_section_is_underlined_as_its_border() {
     let buffer = terminal.backend().buffer();
     let row_text = |y: u16| -> String { (0..80).map(|x| buffer[(x, y)].symbol()).collect() };
     let find = |needle: &str| -> u16 {
-        (0..24)
+        (0..28)
             .find(|&y| row_text(y).contains(needle))
             .unwrap_or_else(|| panic!("{needle} row"))
     };
-    let underlined = |y: u16| {
-        // Every cell of the right panel, x 28..79.
-        (28..79).all(|x| buffer[(x, y)].modifier.contains(Modifier::UNDERLINED))
-    };
-    assert!(
-        underlined(find("KEYS:")),
-        "the KEYS row is the field block's last row"
-    );
-    assert!(underlined(find("WATCHORD")), "the title bar's border");
-    assert!(underlined(find("CΔ6")), "the last reading row");
-    assert!(!underlined(find("Am7/C")), "a middle reading row is not");
-    assert!(underlined(find("HISTORY") + 2), "the one history row");
-    for control in ["READINGS", "HISTORY", "NOTES", "FUNCTION:"] {
-        assert!(
-            !underlined(find(control)),
-            "{control} must not be underlined"
-        );
+    // The left column, x 1..59, holds only spaces on a divider row.
+    let blank = |y: u16| (1..59).all(|x| buffer[(x, y)].symbol() == " ");
+    assert!(blank(find("KEYS:") + 1), "a blank row after KEYS");
+    assert!(blank(find("READINGS") - 1), "a blank row before READINGS");
+    assert!(blank(find("HISTORY") - 1), "a blank row before HISTORY");
+    assert!(blank(find("NOTES") - 1), "a blank row before NOTES");
+    for control in ["READINGS", "HISTORY", "NOTES", "KEYS:", "WATCHORD"] {
+        assert!(!blank(find(control)), "{control} is not blank");
     }
+    let underlined =
+        (0..80).any(|x| (0..28).any(|y| buffer[(x, y)].modifier.contains(Modifier::UNDERLINED)));
+    assert!(!underlined, "no cell is underlined");
 }
 
 /// `2026-08-28 13:46` -> `YYYY-MM-DD HH:MM`, as the other skins' tests mask it.

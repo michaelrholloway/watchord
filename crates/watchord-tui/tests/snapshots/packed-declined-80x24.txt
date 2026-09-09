@@ -1,24 +1,24 @@
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ WATCHORD                                                                     │
-│                          │KEY[K][M]:  —                                      │
-│                          │FUNCTION:   —                                      │
-│            —             │NUMERAL:    —                                      │
-│                          │KEYS:       C3   C#3                               │
-│   no honest reading —    │READINGS                                         ■ │
-│ these keys do not spell  │NAME        ORIGIN     FIT      NUMERAL FUNCTION   │
-│  a chord in the grammar  │—                                                  │
-├──────────────────────────┤HISTORY                                          ■ │
-│                          │NAME        KEYS                NUMERAL FUNCTION   │
-│        ──────────        │C  C#       C3   C#3            —       —          │
-│                          │NOTES                                            ■ │
-│        ──────────        │ add a note...                  SAVE[⏎] VIEW ALL[N]│
-│                          │CHORD       NOTE                                   │
-│        ──────────        │                                                   │
-│                          │                                                   │
-│        ──────────        │                                                   │
-│                          │                                                   │
-│        ──────────        │                                                   │
-│                          │                                                   │
-├──────────────────────────┴───────────────────────────────────────────────────┤
+┌──────────────────────────────────────────────────────────┬───────────────────┐
+│ WATCHORD                                                 │    ──────────     │
+│ —                                                        │                   │
+│ no honest reading — these keys do not spell a chord in … │    ──────────     │
+├──────────────────────────────────────────────────────────┤                   │
+│KEY[K][M]:  —                                             │    ──────────     │
+│FUNCTION:   —                                             │                   │
+│NUMERAL:    —                                             │    ──────────     │
+│KEYS:       C3   C#3                                      │                   │
+│                                                          │    ──────────     │
+│READINGS                                                ■ │                   │
+│NAME        ORIGIN     FIT             NUMERAL FUNCTION   │                   │
+│—                                                         │    ──────────     │
+│                                                          │                   │
+│HISTORY                                                 ■ │    ──────────     │
+│NAME        KEYS                       NUMERAL FUNCTION   │                   │
+│C  C#       C3   C#3                   —       —          │    ──────────     │
+│                                                          │                   │
+│NOTES                                                   ■ │    ──────────     │
+│ add a note...                         SAVE[⏎] VIEW ALL[N]│                   │
+│CHORD       NOTE                                          │    ──────────     │
+├──────────────────────────────────────────────────────────┴───────────────────┤
 │ SUSTAIN: OFF ●    ARPEGGIO[A]: OFF ●    STATE: PLAYING ●      INPUT[I]: NONE │
 └──────────────────────────────────────────────────────────────────────────────┘

@@ -1,13 +1,13 @@
 //! The packed skin: Michael's Figma frame `48:2938`, cell for cell at 80×24,
 //! growing into a larger terminal (spec #20, ADR-0006).
 //!
-//! One outer box. A title bar, a body split into a 26-cell left panel and a
-//! right panel that takes the rest, and a foot. Left: the headline box over
-//! the staff box. Right, on one column grid: the KEY, FUNCTION, NUMERAL and
-//! KEYS rows; the READINGS table; the HISTORY table; the NOTES section with
-//! the field and the saved notes. Section headers are rows filled `#1E1E1E`,
-//! flush under the section above them; the last row of each section carries
-//! an underline, which is the design's section border at no cost in rows.
+//! One outer box and a foot. The body is two columns: the left three
+//! quarters hold the title, the headline over a rule, then on one column
+//! grid the KEY, FUNCTION, NUMERAL and KEYS rows, the READINGS table, the
+//! HISTORY table and the NOTES section with the field and the saved notes.
+//! The right quarter is the staff, full height. Section headers are rows
+//! filled `#1E1E1E`; one blank row divides two sections (the layout Michael
+//! asked for on 2026-09-09, over the frame's narrow left panel).
 //!
 //! What the frame carries and the skin does not draw stays in the frame:
 //! drill, settle, the sostenuto and soft pedals, score, root, claimed,
@@ -111,10 +111,12 @@ pub const MIN_WIDTH: u16 = 80;
 pub const MIN_HEIGHT: u16 = 24;
 const TOO_SMALL: &str = "watchord needs 80×24";
 
-/// The left panel's inner width, in cells. The design's 222px at 8.4px a cell.
-const LEFT_WIDTH: u16 = 26;
-/// The headline box's rows. The staff box takes the rest of the left panel.
-const HEADLINE_ROWS: u16 = 7;
+/// The staff column's share of the inner width: the right quarter. The
+/// headline and every table take the rest, at the left.
+const STAFF_SHARE: u16 = 4;
+/// The headline's rows over the tables: the name, then the spoken form with
+/// the fit detail after it. A rule closes the box under them.
+const HEADLINE_ROWS: u16 = 2;
 /// A five-line staff: nine rows, one per position — a line on each even
 /// row, a space on each odd row — so every head sits exactly on its line or
 /// in its space. Text alone, so every terminal draws the same staff.
@@ -125,9 +127,8 @@ const HEAD: &str = "■";
 const STAFF_GAP: u16 = 2;
 /// Both clefs draw when the staff box has room for two staves and the gap.
 const BOTH_CLEFS_FROM: u16 = STAFF_ROWS * 2 + STAFF_GAP;
-/// The staff lines' width and left offset inside the staff box.
+/// The staff lines' width; they centre in the staff column.
 const STAFF_LINE_WIDTH: u16 = 10;
-const STAFF_LINE_X: u16 = 8;
 
 /// The right panel's grid, as offsets from its left edge: the label or NAME
 /// column, the second column every section shares, then FIT (the history
@@ -159,12 +160,11 @@ const DOT: &str = "●";
 const SQUARE: &str = "■";
 
 /// The rows each list is guaranteed at 24 rows.
-const READINGS_MIN: usize = 2;
+const READINGS_MIN: usize = 1;
 const HISTORY_MIN: usize = 1;
-const NOTES_MIN: usize = 4;
-// No rule rows between sections. Michael ruled them out: a rule row is a
-// whole terminal row, and it reads as a gap above the header, not as a
-// border. The border is an underline on the section's last row instead.
+const NOTES_MIN: usize = 0;
+// One blank row divides two sections (Michael's ruling, 2026-09-09, over
+// the earlier underline border, which drew differently in every terminal).
 
 /// How the right panel's body rows are spent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -177,9 +177,11 @@ struct Layout {
 /// Spare rows beyond the minimums go, in order: to
 /// readings until every reading shows, to notes until every note shows, to
 /// history until every entry shows, then the rest to notes. Every row is one
-/// terminal row; nothing is double-spaced.
+/// terminal row; nothing is double-spaced. `rows` is the section area under
+/// the headline's rule; the four KEY rows, three headers, two heads rows,
+/// the note field and three blank dividers are fixed.
 fn allocate(rows: u16, readings: usize, history: usize, notes: usize) -> Layout {
-    const FIXED: usize = 4 + 2 + 2 + 3;
+    const FIXED: usize = 4 + 1 + 2 + 1 + 2 + 1 + 3;
     let variable = (rows as usize).saturating_sub(FIXED);
     let mut layout = Layout {
         readings: READINGS_MIN,
@@ -234,7 +236,8 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
     let x1 = area.x + area.width - 1;
     let y0 = area.y;
     let y1 = area.y + area.height - 1;
-    let divider_x = x0 + 1 + LEFT_WIDTH;
+    let staff_width = (area.width - 2) / STAFF_SHARE;
+    let divider_x = x1 - 1 - staff_width;
 
     if frame.screen == Screen::AllNotes {
         let body = Rect::new(x0 + 1, y0 + 2, area.width - 2, area.height - 5);
@@ -252,7 +255,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
 
     canvas.frame_box(Some(divider_x));
 
-    // Title bar.
+    // Title, at the head of the left column.
     canvas.put(
         x0 + 2,
         y0 + 1,
@@ -261,26 +264,31 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
     );
     if let Some(step) = frame.history_step {
         let plate = format!("HISTORY {}/{}", step.index, step.total);
-        canvas.put(x1 - 1 - plate.width() as u16, y0 + 1, &plate, dim_bold());
+        canvas.put(
+            divider_x - 1 - plate.width() as u16,
+            y0 + 1,
+            &plate,
+            dim_bold(),
+        );
     }
 
-    // Body.
-    let body_top = y0 + 2;
+    // Body: the left column holds the headline over the tables; the staff
+    // column at the right takes the full height, title row included.
     let body_bottom = y1 - 3; // inclusive
     let left = Rect {
         x: x0 + 1,
-        y: body_top,
-        width: LEFT_WIDTH,
-        height: body_bottom - body_top + 1,
+        y: y0 + 2,
+        width: divider_x - x0 - 1,
+        height: body_bottom - y0 - 1,
     };
-    let right = Rect {
+    let staff = Rect {
         x: divider_x + 1,
-        y: body_top,
+        y: y0 + 1,
         width: x1 - divider_x - 1,
-        height: left.height,
+        height: body_bottom - y0,
     };
-    canvas.left_panel(left, frame);
-    let cursor = canvas.right_panel(right, frame, ui, &mut hits);
+    let cursor = canvas.left_column(left, frame, ui, &mut hits);
+    canvas.staff_box(staff, frame);
 
     // Foot.
     canvas.foot(x0 + 2, y1 - 1, x1 - 1, frame);
@@ -312,30 +320,6 @@ fn cut(text: &str, width: usize) -> String {
 /// A note's text on one row: an embedded line break shows as a mark.
 fn single_line(text: &str) -> String {
     text.replace('\n', " ⏎ ")
-}
-
-/// Word-wraps `text` into lines of at most `width` cells, at most `rows` lines.
-fn wrap(text: &str, width: usize, rows: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut line = String::new();
-    for word in text.split_whitespace() {
-        if line.is_empty() {
-            line = word.to_string();
-        } else if line.width() + 1 + word.width() <= width {
-            line.push(' ');
-            line.push_str(word);
-        } else {
-            lines.push(std::mem::take(&mut line));
-            line = word.to_string();
-        }
-        if lines.len() == rows {
-            break;
-        }
-    }
-    if !line.is_empty() && lines.len() < rows {
-        lines.push(line);
-    }
-    lines
 }
 
 fn or_absent(value: Option<&str>) -> &str {
@@ -417,29 +401,6 @@ impl Canvas<'_> {
         self.put(x, y, &blank, style);
     }
 
-    /// Centres `text` in `width` cells starting at `x`. Cut when longer.
-    fn put_centered(&mut self, x: u16, y: u16, width: u16, text: &str, style: Style) {
-        let text = cut(text, width as usize);
-        let pad = (width as usize).saturating_sub(text.width()) / 2;
-        self.put(x + pad as u16, y, &text, style);
-    }
-
-    /// A hairline under `width` cells at `(x, y)`: every cell underlined in
-    /// its own colour, whatever it holds. The line sits at the foot of the row, so the
-    /// next section's header starts flush against it and no row is spent —
-    /// the design's one-pixel section border, in a terminal (ADR-0006).
-    fn hairline_under(&mut self, x: u16, y: u16, width: u16) {
-        for column in x..x + width {
-            let cell = &mut self.buf[(column, y)];
-            // No underline colour: a terminal that does not know SGR 58
-            // (macOS Terminal) reads the colour's parameters as separate
-            // codes, and the `2` in them is "faint" — the whole row greys.
-            // The underline takes the cell's own foreground instead.
-            let style = cell.style().add_modifier(Modifier::UNDERLINED);
-            cell.set_style(style);
-        }
-    }
-
     /// A rule across `width` cells at `(x, y)`, joined to the vertical lines
     /// on either side: `├────┤`.
     fn rule(&mut self, x: u16, y: u16, width: u16) {
@@ -488,8 +449,8 @@ impl Canvas<'_> {
 
     // MARK: Chrome
 
-    /// The outer box, the underline that borders the title bar, the rule over
-    /// the foot, and, on Now Playing, the column divider through the body.
+    /// The outer box, the rule over the foot, and, on Now Playing, the
+    /// staff column's divider from the top border down to the foot rule.
     fn frame_box(&mut self, divider_x: Option<u16>) {
         let area = self.area;
         let x0 = area.x;
@@ -507,11 +468,9 @@ impl Canvas<'_> {
         }
         self.put(x1, y1 - 1, "│", style);
         self.put(x0, y1 - 1, "│", style);
-        // The title bar's border is an underline on the title row, not a
-        // rule row, so the KEY row starts flush under it (Michael's ruling).
-        self.hairline_under(x0 + 1, y0 + 1, area.width - 2);
         if let Some(divider_x) = divider_x {
-            for y in y0 + 2..y1 - 2 {
+            self.put(divider_x, y0, "┬", style);
+            for y in y0 + 1..y1 - 2 {
                 self.put(divider_x, y, "│", style);
             }
             self.put(divider_x, y1 - 2, "┴", style);
@@ -558,33 +517,39 @@ impl Canvas<'_> {
         self.put_cut(cursor, y, &input_text, right.saturating_sub(cursor), ink());
     }
 
-    // MARK: Left panel
+    // MARK: Left column
 
-    /// The headline box over the staff box, a rule between them.
-    fn left_panel(&mut self, left: Rect, frame: &Frame) {
+    /// The headline over a rule, then the four field rows, the two tables
+    /// and the notes section, a blank row between sections. Returns the
+    /// cursor position in the note field.
+    fn left_column(
+        &mut self,
+        left: Rect,
+        frame: &Frame,
+        ui: &UiState,
+        hits: &mut Hits,
+    ) -> Option<(u16, u16)> {
         let headline = Rect {
             height: HEADLINE_ROWS,
             ..left
         };
         self.headline_box(headline, frame);
-
         let rule_y = left.y + HEADLINE_ROWS;
-        self.rule(left.x, rule_y, LEFT_WIDTH);
-
-        let staff = Rect {
+        self.rule(left.x, rule_y, left.width);
+        let sections = Rect {
             y: rule_y + 1,
             height: left.height - HEADLINE_ROWS - 1,
             ..left
         };
-        self.staff_box(staff, frame);
+        self.sections(sections, frame, ui, hits)
     }
 
     /// The name in lime, one bold line, with `≈` before it when the fit is
-    /// nearest; the spoken form under it; the fit detail under that.
-    /// Declined: `—` and the reason.
+    /// nearest; under it the spoken form, then the fit detail dim after two
+    /// spaces. Declined: `—` and the reason.
     fn headline_box(&mut self, box_: Rect, frame: &Frame) {
-        let inner_x = box_.x + 1;
-        let inner_w = box_.width - 2;
+        let x = box_.x + 1;
+        let w = box_.width - 2;
         let name = match frame.headline.as_ref() {
             Some(headline) => match &headline.approximation {
                 Some(mark) => format!("{mark} {}", headline.name),
@@ -592,30 +557,22 @@ impl Canvas<'_> {
             },
             None => ABSENT.to_string(),
         };
-        // Two rows for the name (it sits on the second), one blank, then the
-        // words.
-        self.put_centered(inner_x, box_.y + 2, inner_w, &name, lime_bold());
-        let y = box_.y + 4;
-
-        let below: Vec<(String, Style)> = match frame.headline.as_ref() {
+        self.put_cut(x, box_.y, &name, w, lime_bold());
+        let y = box_.y + 1;
+        match frame.headline.as_ref() {
             Some(headline) => {
-                let mut rows = vec![(headline.spoken.to_uppercase(), ink())];
+                let spoken = headline.spoken.to_uppercase();
+                let written = self.put_cut(x, y, &spoken, w, ink()).width;
                 if let Some(detail) = headline.fit_detail.as_deref() {
-                    rows.push((detail.to_string(), dim()));
+                    let at = x + written + 2;
+                    self.put_cut(at, y, detail, (x + w).saturating_sub(at), dim());
                 }
-                rows
             }
-            None => match frame.declined.as_deref() {
-                Some(reason) => wrap(reason, inner_w as usize, 3)
-                    .into_iter()
-                    .map(|line| (line, dim()))
-                    .collect(),
-                None => Vec::new(),
-            },
-        };
-        let last_y = box_.y + box_.height;
-        for (y, (text, style)) in (y..last_y).zip(below) {
-            self.put_centered(inner_x, y, inner_w, &text, style);
+            None => {
+                if let Some(reason) = frame.declined.as_deref() {
+                    self.put_cut(x, y, reason, w, dim());
+                }
+            }
         }
     }
 
@@ -694,7 +651,7 @@ impl Canvas<'_> {
         }
         let slack = rows - (top - bottom + 1);
         let y_top = box_.y as i32 + slack / 2;
-        let line_x = box_.x + STAFF_LINE_X;
+        let line_x = box_.x + box_.width.saturating_sub(STAFF_LINE_WIDTH) / 2;
         let head_x = line_x + STAFF_LINE_WIDTH / 2;
         let line: String = "─".repeat(STAFF_LINE_WIDTH as usize);
         for row in (bottom..=top).rev() {
@@ -728,22 +685,23 @@ impl Canvas<'_> {
         }
     }
 
-    // MARK: Right panel
+    // MARK: Sections
 
-    /// The four field rows, the two tables and the notes section, top down.
-    /// Returns the cursor position in the note field.
-    fn right_panel(
+    /// The four field rows, the two tables and the notes section, top down,
+    /// a blank row between sections. Returns the cursor position in the
+    /// note field.
+    fn sections(
         &mut self,
-        right: Rect,
+        area: Rect,
         frame: &Frame,
         ui: &UiState,
         hits: &mut Hits,
     ) -> Option<(u16, u16)> {
-        let x = right.x;
-        let w = right.width;
-        let mut y = right.y;
+        let x = area.x;
+        let w = area.width;
+        let mut y = area.y;
         let layout = allocate(
-            right.height,
+            area.height,
             frame.readings().len(),
             frame.history.len(),
             frame.notes.len(),
@@ -791,13 +749,10 @@ impl Canvas<'_> {
             &frame.keys,
             on_fill(),
         );
-        self.hairline_under(x, y, w);
-        y += 1;
+        y += 2;
 
-        y = self.readings(x, y, w, layout.readings, frame, ui, hits);
-        self.hairline_under(x, y - 1, w);
-        y = self.history(x, y, w, layout.history, frame);
-        self.hairline_under(x, y - 1, w);
+        y = self.readings(x, y, w, layout.readings, frame, ui, hits) + 1;
+        y = self.history(x, y, w, layout.history, frame) + 1;
 
         // NOTES.
         self.section_header(x, y, w, "NOTES", PINK);
@@ -1339,46 +1294,47 @@ mod tests {
 
     #[test]
     fn at_24_rows_the_lists_get_their_minimums() {
-        // 18 body rows: 11 fixed, 7 variable, all spoken for by the minimums.
+        // 16 section rows at 80×24: 14 fixed, 2 variable, one reading and
+        // one history entry; a note row comes with the 25th terminal row.
         assert_eq!(
-            allocate(18, 3, 9, 3),
+            allocate(16, 3, 9, 3),
             Layout {
-                readings: 2,
+                readings: 1,
                 history: 1,
-                notes: 4
+                notes: 0
             }
         );
     }
 
     #[test]
     fn spare_rows_go_to_readings_notes_history_then_notes_again() {
-        // 21 body rows: three spare. Readings take one, history two.
+        // 19 section rows: three spare. Readings take two, notes one.
         assert_eq!(
-            allocate(21, 3, 9, 3),
+            allocate(19, 3, 9, 3),
             Layout {
                 readings: 3,
-                history: 3,
-                notes: 4
+                history: 1,
+                notes: 1
             }
         );
-        // 40 body rows: 22 spare. Readings 1, notes 2 (six notes), history 8
-        // (nine entries), and the last 11 to notes.
+        // 40 section rows: 24 spare. Readings 2, notes 6 (six notes),
+        // history 8 (nine entries), and the last 8 to notes.
         assert_eq!(
             allocate(40, 3, 9, 6),
             Layout {
                 readings: 3,
                 history: 9,
-                notes: 17
+                notes: 14
             }
         );
-        // A short list never keeps a blank row: one reading in a two-row
-        // minimum hands the other row to the notes.
+        // A short list never keeps a blank row: every row a list cannot
+        // fill goes to the notes.
         assert_eq!(
-            allocate(18, 1, 0, 3),
+            allocate(20, 1, 0, 3),
             Layout {
                 readings: 1,
                 history: 1,
-                notes: 5
+                notes: 4
             }
         );
         // Nothing to show: one `—` row each, and every spare row goes to notes.
@@ -1387,7 +1343,7 @@ mod tests {
             Layout {
                 readings: 1,
                 history: 1,
-                notes: 17
+                notes: 14
             }
         );
     }
@@ -1397,14 +1353,6 @@ mod tests {
         assert_eq!(cut("C7#9", 12), "C7#9");
         assert_eq!(cut("tristan & isolde chord", 12), "tristan & i…");
         assert_eq!(cut("a\nb", 12), "a ⏎ b");
-    }
-
-    #[test]
-    fn wrap_breaks_on_words_and_stops_at_the_row_cap() {
-        assert_eq!(
-            wrap("no honest reading — these keys do not spell a chord", 12, 3),
-            vec!["no honest", "reading —", "these keys"]
-        );
     }
 
     #[test]
