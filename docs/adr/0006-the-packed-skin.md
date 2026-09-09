@@ -43,21 +43,19 @@ serves every skin.
   ruled the block figure (ADR-0003 (e)) out for this skin: *"it should just be
   larger text in the same font."* Ticket #8, kitty graphics, is the path to
   that.
-- The design's section borders are rule rows. A rule row costs a whole line, so
-  at 24 rows there are none; the first three spare rows draw them, before any
-  list grows. A header sits flush under its rule: a list never keeps a blank
-  row, and rows it cannot fill move to the notes at the foot of the panel.
-- Every row is one terminal row; nothing is double-spaced. The history's keys
-  are plain text rather than filled chips, because filled chips in adjacent
-  rows touch.
+- No rule rows between sections. A rule row is a whole terminal row and reads
+  as a gap above the header, not as a border; each header's own fill is the
+  border, flush under the section above. Every row is one terminal row.
+  History keys are filled chips, as drawn, and chips in adjacent rows touch.
 - Note heads are `■` on one column; an accidental sits in the cell to the left
   and never moves the head. Two heads on one row (D3 and D#3) sit two cells
   apart.
 - Treble staff only at 24 rows; both clefs from 34. A five-line staff is nine
-  terminal rows, and two do not fit in the ten-row box. The two staves sit
-  tight, one row apart, with the spare rows above and below. When notes outrun
-  the box, the empty staff edges give way first, then the ledger note farthest
-  from the staff.
+  terminal rows, and two do not fit in the ten-row box. Two rows separate the
+  staves (the design's 32px); the spare rows go above and below. Every even
+  row off the staff out to the farthest note carries a short ledger line, as
+  on paper. When notes outrun the box, the empty staff edges give way first,
+  then the ledger note farthest from the staff.
 - The table grid is fixed from the left. FIT widens with the terminal up to 26
   cells; NUMERAL and FUNCTION follow it rather than hanging off the far edge.
 - The FIT column shows the tier word; the detail sits under the spoken name in

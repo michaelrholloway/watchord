@@ -5,18 +5,18 @@
 │                          │FUNCTION:   SUBDOMINANT                            │
 │           Dm9            │NUMERAL:    iim9                                   │
 │        D MINOR 9         │KEYS:       D2   F2   A2   C3   E3                 │
-│                          ├───────────────────────────────────────────────────┤
 │                          │READINGS                                         ■ │
 │                          │NAME        ORIGIN     FIT      NUMERAL FUNCTION   │
-├──────────────────────────┤Dm9         HEADLINE   EXACT    iim9    subdominant│
-│                          ├───────────────────────────────────────────────────┤
-│                          │HISTORY                                          ■ │
+│                          │Dm9         HEADLINE   EXACT    iim9    subdominant│
+├──────────────────────────┤HISTORY                                          ■ │
 │                          │NAME        KEYS                NUMERAL FUNCTION   │
-│        ──────────        │G7          G2  B2  D3  F3      V7      dominant   │
-│                          │Em7         E2  G2  B2  D3      iiim7   tonic      │
-│        ──────────        │A7          A2  C#3  E3  G3     VI7     V7/ii      │
-│                          │Dm9         D2  F2  A2  C3  E3  iim9    subdominant│
-│        ──────────        ├───────────────────────────────────────────────────┤
+│                          │CΔ7         C3   E3   G3   B3   IΔ7     tonic      │
+│                          │Am7         A2   C3   E3   G3   vim7    tonic      │
+│        ──────────        │Dm7         D3   F3   A3   C4   iim7    subdominant│
+│                          │G7          G2   B2   D3   F3   V7      dominant   │
+│        ──────────        │Em7         E2   G2   B2   D3   iiim7   tonic      │
+│                          │A7          A2   C#3   E3   G3  VI7     V7/ii      │
+│        ──────────        │Dm9         D2   F2   A2   C3   iim9    subdominant│
 │                          │NOTES                                            ■ │
 │        ─────■────        │ add a note...                  SAVE[⏎] VIEW ALL[N]│
 │                          │CHORD       NOTE                                   │

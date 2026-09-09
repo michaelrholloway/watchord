@@ -5,9 +5,8 @@
 //! right panel that takes the rest, and a foot. Left: the headline box over
 //! the staff box. Right, on one column grid: the KEY, FUNCTION, NUMERAL and
 //! KEYS rows; the READINGS table; the HISTORY table; the NOTES section with
-//! the field and the saved notes. Section headers are rows filled `#1E1E1E`.
-//! The design's section borders are rule rows; at 24 rows there is no row to
-//! spare for them, so they appear as the terminal grows, before any list does.
+//! the field and the saved notes. Section headers are rows filled `#1E1E1E`,
+//! flush under the section above them; the fill is the border.
 //!
 //! What the frame carries and the skin does not draw stays in the frame:
 //! drill, settle, the sostenuto and soft pedals, score, root, claimed,
@@ -117,8 +116,10 @@ const LEFT_WIDTH: u16 = 26;
 const HEADLINE_ROWS: u16 = 7;
 /// A five-line staff: five line rows and four space rows.
 const STAFF_ROWS: u16 = 9;
-/// Both clefs draw when the staff box has room for two staves and a gap.
-const BOTH_CLEFS_FROM: u16 = STAFF_ROWS * 2 + 1;
+/// Rows between the treble and bass staves; the design's 32px at 20px a row.
+const STAFF_GAP: u16 = 2;
+/// Both clefs draw when the staff box has room for two staves and the gap.
+const BOTH_CLEFS_FROM: u16 = STAFF_ROWS * 2 + STAFF_GAP;
 /// The staff lines' width and left offset inside the staff box.
 const STAFF_LINE_WIDTH: u16 = 10;
 const STAFF_LINE_X: u16 = 8;
@@ -156,21 +157,19 @@ const SQUARE: &str = "■";
 const READINGS_MIN: usize = 2;
 const HISTORY_MIN: usize = 1;
 const NOTES_MIN: usize = 4;
-/// The rule rows the right panel draws when there is room: after the field
-/// block, after the readings, after the history.
-const RULES_MAX: usize = 3;
+// No rule rows between sections. Michael ruled them out: a rule row is a
+// whole terminal row, and it reads as a gap above the header, not as a
+// border. The header's own fill is the separator.
 
 /// How the right panel's body rows are spent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Layout {
-    /// Rule rows drawn between sections, 0..=3, in order from the top.
-    rules: usize,
     readings: usize,
     history: usize,
     notes: usize,
 }
 
-/// Spare rows beyond the minimums go, in order: to the section rules, to
+/// Spare rows beyond the minimums go, in order: to
 /// readings until every reading shows, to notes until every note shows, to
 /// history until every entry shows, then the rest to notes. Every row is one
 /// terminal row; nothing is double-spaced.
@@ -178,15 +177,11 @@ fn allocate(rows: u16, readings: usize, history: usize, notes: usize) -> Layout 
     const FIXED: usize = 4 + 2 + 2 + 3;
     let variable = (rows as usize).saturating_sub(FIXED);
     let mut layout = Layout {
-        rules: 0,
         readings: READINGS_MIN,
         history: HISTORY_MIN,
         notes: NOTES_MIN,
     };
     let mut spare = variable.saturating_sub(READINGS_MIN + HISTORY_MIN + NOTES_MIN);
-    let give = spare.min(RULES_MAX);
-    layout.rules += give;
-    spare -= give;
     let give = spare.min(readings.max(1).saturating_sub(layout.readings));
     layout.readings += give;
     spare -= give;
@@ -605,9 +600,9 @@ impl Canvas<'_> {
     }
 
     /// The staff: five lines a clef as rules, `■` heads with their accidental
-    /// in the cell to their left, short ledger lines under heads off the
-    /// staff. Treble alone unless the box has room for both clefs and a row
-    /// between; the two staves sit tight, with the spare rows above and below.
+    /// in the cell to their left, short ledger lines on every even row off the
+    /// staff out to the farthest note. Treble alone unless the box has room for both clefs and the gap
+    /// between; the spare rows go above and below the pair.
     fn staff_box(&mut self, box_: Rect, frame: &Frame) {
         let notes = &frame.annotations.staff;
         if box_.height < BOTH_CLEFS_FROM {
@@ -622,7 +617,7 @@ impl Canvas<'_> {
             window_rows(notes, Clef::Treble),
             window_rows(notes, Clef::Bass),
         );
-        while t + b + 1 > box_.height {
+        while t + b + STAFF_GAP > box_.height {
             if b >= t && b > STAFF_ROWS {
                 b -= 1;
             } else if t > STAFF_ROWS {
@@ -631,7 +626,7 @@ impl Canvas<'_> {
                 break;
             }
         }
-        let block = t + 1 + b;
+        let block = t + STAFF_GAP + b;
         let top = box_.y + box_.height.saturating_sub(block) / 2;
         let treble = Rect {
             y: top,
@@ -639,7 +634,7 @@ impl Canvas<'_> {
             ..box_
         };
         let bass = Rect {
-            y: top + t + 1,
+            y: top + t + STAFF_GAP,
             height: b,
             ..box_
         };
@@ -694,16 +689,19 @@ impl Canvas<'_> {
                 self.put(line_x, y, &line, ink());
             }
             let heads: Vec<&&StaffNote> = notes.iter().filter(|n| n.row == row).collect();
+            // Every even row off the staff between it and the farthest note
+            // is a ledger line, as on paper: a note on the second ledger line
+            // has the first one drawn above it too.
+            if !on_staff && row % 2 == 0 {
+                let ledger: String = "─".repeat(2 * heads.len().max(1) + 1);
+                self.put(head_x - 1, y, &ledger, ink());
+            }
             if heads.is_empty() {
                 continue;
             }
             // Lowest first. The first head sits on the head column; a second
             // head on the same row (D3 beside D#3) sits two cells right, so
             // each keeps the cell to its left for its accidental.
-            if !on_staff && row % 2 == 0 {
-                let ledger: String = "─".repeat(2 * heads.len() + 1);
-                self.put(head_x - 1, y, &ledger, ink());
-            }
             for (index, head) in heads.iter().enumerate() {
                 let x = head_x + 2 * index as u16;
                 let accidental = head.spelled.accidental.symbol();
@@ -735,15 +733,6 @@ impl Canvas<'_> {
             frame.history.len(),
             frame.notes.len(),
         );
-        let mut rules = layout.rules;
-        let mut rule_if_any = |canvas: &mut Self, y: &mut u16| {
-            if rules > 0 {
-                canvas.rule(x, *y, w);
-                *y += 1;
-                rules -= 1;
-            }
-        };
-
         // KEY, on the fill like a section header; then FUNCTION, NUMERAL, KEYS.
         self.fill_row(x, y, w, on_fill());
         self.hint_label(
@@ -788,12 +777,9 @@ impl Canvas<'_> {
             on_fill(),
         );
         y += 1;
-        rule_if_any(self, &mut y);
 
         y = self.readings(x, y, w, layout.readings, frame, ui, hits);
-        rule_if_any(self, &mut y);
         y = self.history(x, y, w, layout.history, frame);
-        rule_if_any(self, &mut y);
 
         // NOTES.
         self.section_header(x, y, w, "NOTES", PINK);
@@ -875,8 +861,8 @@ impl Canvas<'_> {
         from + rows as u16
     }
 
-    /// The HISTORY header, heads and rows, newest last, one row each; the
-    /// keys as plain text so adjacent rows never collide. The window
+    /// The HISTORY header, heads and rows, newest last, one row each, the
+    /// keys as filled chips as the design draws them. The window
     /// ends at the newest entry, unless the display is stepped to an older
     /// one that must stay in view; the stepped row is filled. Returns the
     /// row after the block.
@@ -900,21 +886,19 @@ impl Canvas<'_> {
             .take(end - start);
         for (row_y, (index, entry)) in (from..).zip(shown) {
             let stepped = frame.history_step.is_some_and(|s| s.index == index + 1);
-            let text = if stepped {
+            let (text, chip) = if stepped {
                 self.fill_row(x, row_y, w, on_fill());
-                on_fill()
+                (on_fill(), ink())
             } else {
-                ink()
+                (ink(), on_fill())
             };
             self.put_cut(x + COL_LABEL, row_y, &entry.name, COL_VALUE - 1, text);
-            // Plain text, not chips: rows are one terminal row apart, and a
-            // filled chip would touch the chip above and below it.
-            self.put_cut(
-                x + COL_VALUE,
+            self.chips(
+                x + COL_VALUE - 1,
                 row_y,
+                col_numeral - COL_VALUE,
                 &entry.keys,
-                col_numeral - COL_VALUE - 1,
-                text,
+                chip,
             );
             self.put_cut(
                 x + col_numeral,
@@ -1336,12 +1320,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn at_24_rows_the_lists_get_their_minimums_and_no_rules() {
+    fn at_24_rows_the_lists_get_their_minimums() {
         // 18 body rows: 11 fixed, 7 variable, all spoken for by the minimums.
         assert_eq!(
             allocate(18, 3, 9, 3),
             Layout {
-                rules: 0,
                 readings: 2,
                 history: 1,
                 notes: 4
@@ -1350,26 +1333,24 @@ mod tests {
     }
 
     #[test]
-    fn spare_rows_go_to_rules_readings_notes_history_then_notes_again() {
-        // 21 body rows: three spare, all three rules.
+    fn spare_rows_go_to_readings_notes_history_then_notes_again() {
+        // 21 body rows: three spare. Readings take one, history two.
         assert_eq!(
             allocate(21, 3, 9, 3),
             Layout {
-                rules: 3,
-                readings: 2,
-                history: 1,
+                readings: 3,
+                history: 3,
                 notes: 4
             }
         );
-        // 40 body rows: 22 spare. Rules 3, readings 1, notes 2 (six notes),
-        // history 8 (nine entries), and the last 8 to notes.
+        // 40 body rows: 22 spare. Readings 1, notes 2 (six notes), history 8
+        // (nine entries), and the last 11 to notes.
         assert_eq!(
             allocate(40, 3, 9, 6),
             Layout {
-                rules: 3,
                 readings: 3,
                 history: 9,
-                notes: 14
+                notes: 17
             }
         );
         // A short list never keeps a blank row: one reading in a two-row
@@ -1377,7 +1358,6 @@ mod tests {
         assert_eq!(
             allocate(18, 1, 0, 3),
             Layout {
-                rules: 0,
                 readings: 1,
                 history: 1,
                 notes: 5
@@ -1387,10 +1367,9 @@ mod tests {
         assert_eq!(
             allocate(30, 0, 0, 0),
             Layout {
-                rules: 3,
                 readings: 1,
                 history: 1,
-                notes: 14
+                notes: 17
             }
         );
     }

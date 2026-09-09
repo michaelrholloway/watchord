@@ -11,7 +11,7 @@
 ├──────────────────────────┤Eb/C        REROOTED   EXACT    bIII    chromatic  │
 │        ──────────        │HISTORY                                          ■ │
 │                          │NAME        KEYS                NUMERAL FUNCTION   │
-│        ──────────        │C7#9        C1  E2  A#2  D#3  … I7#9    V7/IV      │
+│        ──────────        │C7#9        C1   E2   A#2       I7#9    V7/IV      │
 │                          │NOTES                                            ■ │
 │        ──────────        │ add a note...                  SAVE[⏎] VIEW ALL[N]│
 │                          │CHORD       NOTE                                   │
