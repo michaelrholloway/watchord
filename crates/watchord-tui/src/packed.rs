@@ -420,16 +420,17 @@ impl Canvas<'_> {
     }
 
     /// A hairline under `width` cells at `(x, y)`: every cell underlined in
-    /// ink, whatever it holds. The line sits at the foot of the row, so the
+    /// its own colour, whatever it holds. The line sits at the foot of the row, so the
     /// next section's header starts flush against it and no row is spent —
     /// the design's one-pixel section border, in a terminal (ADR-0006).
     fn hairline_under(&mut self, x: u16, y: u16, width: u16) {
         for column in x..x + width {
             let cell = &mut self.buf[(column, y)];
-            let style = cell
-                .style()
-                .add_modifier(Modifier::UNDERLINED)
-                .underline_color(INK.color());
+            // No underline colour: a terminal that does not know SGR 58
+            // (macOS Terminal) reads the colour's parameters as separate
+            // codes, and the `2` in them is "faint" — the whole row greys.
+            // The underline takes the cell's own foreground instead.
+            let style = cell.style().add_modifier(Modifier::UNDERLINED);
             cell.set_style(style);
         }
     }
