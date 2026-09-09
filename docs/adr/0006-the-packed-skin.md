@@ -39,10 +39,23 @@ serves every skin.
 
 **Terminal departures from the frame**, with reasons:
 
-- The headline is one bold line. A terminal has one type size, and Michael
-  ruled the block figure (ADR-0003 (e)) out for this skin: *"it should just be
-  larger text in the same font."* Ticket #8, kitty graphics, is the path to
-  that.
+- **The headline and the staff are pictures where the terminal can show one.**
+  A terminal has one type size, so a larger headline in the same face is only
+  possible as a picture placed in the cell grid — the kitty graphics protocol
+  (Ghostty, kitty, WezTerm), sixel, or iTerm2. `ratatui-image` asks the
+  terminal what it speaks before the alternate screen opens. With a picture:
+  the headline is JetBrains Mono Bold at 1.1× the cell height, lime, two rows
+  tall; the staff is drawn at pixel size with lines half a cell apart, square
+  heads centred on their line or their space, italic sharps centred on their
+  head, and short ledger lines out to the farthest note — the design's
+  geometry, exactly. The two font files are embedded (SIL OFL 1.1,
+  `assets/OFL.txt`). Michael ruled the block figure out for this skin. A
+  terminal with none of the protocols gets one bold line and the text staff.
+  Known cost: each new picture stays in the terminal's memory for the session.
+- The text staff is nine rows a clef, one row per position, so every head sits
+  exactly on its line or in its space. Two rows separate the staves; spare rows
+  go above and below. The half-row scheme tried in between could not place a
+  head or a sharp exactly and was dropped.
 - No rule rows between sections. A rule row is a whole terminal row and reads
   as a gap above the header, not as a border. The border is an **underline on
   every cell of a section's last row**, drawn in ink: the line sits at the foot
@@ -54,16 +67,6 @@ serves every skin.
 - Note heads are `■` on one column; an accidental sits in the cell to the left
   and never moves the head. Two heads on one row (D3 and D#3) sit two cells
   apart.
-- The staff is five rows a clef, one row per line; the spaces between lines
-  have no row. A head on a line is `■`; a head in a space is an upper-half
-  block in the row of the line below it, so it sits just above that line. (A
-  head split across two rows read as two notes.) Michael asked for
-  the lines closer together after a nine-row staff left the treble's top line
-  and the bass's low C off screen at 33 rows. Treble alone at 24 rows; both
-  clefs once the box holds twelve rows, two rows apart, spare rows above and
-  below. Every even position out to the farthest note carries a short ledger
-  line, as on paper. When notes outrun the box, empty edges give way first,
-  then the ledger row farthest from the staff.
 - The table grid is fixed from the left. FIT widens with the terminal up to 26
   cells; NUMERAL and FUNCTION follow it rather than hanging off the far edge.
 - The FIT column shows the tier word; the detail sits under the spoken name in

@@ -10,6 +10,7 @@
 
 pub mod export;
 pub mod figure;
+pub mod graphics;
 pub mod packed;
 pub mod plain;
 pub mod push;

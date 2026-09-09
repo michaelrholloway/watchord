@@ -3,21 +3,21 @@
 │                          │KEY[K][M]:  —                                      │
 │                          │FUNCTION:   —                                      │
 │            —             │NUMERAL:    —                                      │
-│   no honest reading —    │KEYS:       C3   C#3                               │
-│ these keys do not spell  │READINGS                                         ■ │
-│  a chord in the grammar  │NAME        ORIGIN     FIT      NUMERAL FUNCTION   │
-│                          │—                                                  │
+│                          │KEYS:       C3   C#3                               │
+│   no honest reading —    │READINGS                                         ■ │
+│ these keys do not spell  │NAME        ORIGIN     FIT      NUMERAL FUNCTION   │
+│  a chord in the grammar  │—                                                  │
 ├──────────────────────────┤HISTORY                                          ■ │
 │                          │NAME        KEYS                NUMERAL FUNCTION   │
-│                          │C  C#       C3   C#3            —       —          │
+│        ──────────        │C  C#       C3   C#3            —       —          │
 │                          │NOTES                                            ■ │
 │        ──────────        │ add a note...                  SAVE[⏎] VIEW ALL[N]│
-│        ──────────        │CHORD       NOTE                                   │
-│        ──────────        │                                                   │
-│        ──────────        │                                                   │
+│                          │CHORD       NOTE                                   │
 │        ──────────        │                                                   │
 │                          │                                                   │
+│        ──────────        │                                                   │
 │                          │                                                   │
+│        ──────────        │                                                   │
 │                          │                                                   │
 ├──────────────────────────┴───────────────────────────────────────────────────┤
 │ SUSTAIN: OFF ●    ARPEGGIO[A]: OFF ●    STATE: PLAYING ●      INPUT[I]: NONE │

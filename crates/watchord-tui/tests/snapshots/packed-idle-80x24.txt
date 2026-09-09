@@ -9,15 +9,15 @@
 │                          │—                                                  │
 ├──────────────────────────┤HISTORY                                          ■ │
 │                          │NAME        KEYS                NUMERAL FUNCTION   │
-│                          │—                                                  │
+│        ──────────        │—                                                  │
 │                          │NOTES                                            ■ │
 │        ──────────        │ play a chord to write a note   SAVE[⏎] VIEW ALL[N]│
-│        ──────────        │CHORD       NOTE                                   │
-│        ──────────        │                                                   │
-│        ──────────        │                                                   │
+│                          │CHORD       NOTE                                   │
 │        ──────────        │                                                   │
 │                          │                                                   │
+│        ──────────        │                                                   │
 │                          │                                                   │
+│        ──────────        │                                                   │
 │                          │                                                   │
 ├──────────────────────────┴───────────────────────────────────────────────────┤
 │ SUSTAIN: OFF ●    ARPEGGIO[A]: OFF ●    STATE: IDLE ●         INPUT[I]: NONE │

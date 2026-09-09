@@ -20,11 +20,14 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
+use ratatui::widgets::Widget;
+use ratatui_image::Image;
 use unicode_width::UnicodeWidthStr;
 use watchord_model::notes::tags_of;
 use watchord_model::{Frame, FrameState, Screen};
 use watchord_theory::staff::{Clef, StaffNote};
 
+use crate::graphics::Graphics;
 use crate::push::Token;
 use crate::screens::{Drawn, Hits, ScrollTarget, UiState};
 
@@ -115,17 +118,14 @@ const TOO_SMALL: &str = "watchord needs 80×24";
 const LEFT_WIDTH: u16 = 26;
 /// The headline box's rows. The staff box takes the rest of the left panel.
 const HEADLINE_ROWS: u16 = 7;
-/// A five-line staff: five rows, one per line, the line through the middle
-/// of its row. The spaces between lines have no row of their own: a note in
-/// a space is an upper-half block in the row of the line below it, so it sits
-/// just above that line (Michael: *"reduce the spacing between the stave
-/// lines"*; a head split across two rows read as two notes).
-const STAFF_ROWS: u16 = 5;
-/// A note head on a line.
+/// A five-line staff in text: nine rows, one per position — a line on each
+/// even row, a space on each odd row — so every head sits exactly on its
+/// line or in its space. This is the fallback for a terminal that cannot
+/// show pictures; with pictures the staff is drawn at pixel size instead.
+const STAFF_ROWS: u16 = 9;
+/// A note head.
 const HEAD: &str = "■";
-/// A note head in a space: the upper half of the row of the line below.
-const SPACE_HEAD: &str = "▀";
-/// Rows between the treble and bass staves; the design's 32px at 20px a row.
+/// Rows between the treble and bass staves in text.
 const STAFF_GAP: u16 = 2;
 /// Both clefs draw when the staff box has room for two staves and the gap.
 const BOTH_CLEFS_FROM: u16 = STAFF_ROWS * 2 + STAFF_GAP;
@@ -213,19 +213,41 @@ fn allocate(rows: u16, readings: usize, history: usize, notes: usize) -> Layout 
 
 // MARK: - Entry
 
-/// Draws the whole frame. Returns what the mouse can hit in it.
+/// Draws the whole frame with text alone. Returns what the mouse can hit in it.
 pub fn draw(target: &mut ratatui::Frame, frame: &Frame, ui: &UiState) -> Hits {
+    draw_with(target, frame, ui, None)
+}
+
+/// Draws the whole frame, the headline and the staff as pictures when the
+/// terminal can show them. Returns what the mouse can hit in it.
+pub fn draw_with(
+    target: &mut ratatui::Frame,
+    frame: &Frame,
+    ui: &UiState,
+    graphics: Option<&mut Graphics>,
+) -> Hits {
     let area = target.area();
     let buf = target.buffer_mut();
-    let drawn = draw_into(area, buf, frame, ui);
+    let drawn = draw_into_with(area, buf, frame, ui, graphics);
     if let Some(position) = drawn.cursor {
         target.set_cursor_position(position);
     }
     drawn.hits
 }
 
-/// Draws the whole frame into a buffer.
+/// Draws the whole frame into a buffer, text alone.
 pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> Drawn {
+    draw_into_with(area, buf, frame, ui, None)
+}
+
+/// Draws the whole frame into a buffer.
+pub fn draw_into_with(
+    area: Rect,
+    buf: &mut Buffer,
+    frame: &Frame,
+    ui: &UiState,
+    graphics: Option<&mut Graphics>,
+) -> Drawn {
     buf.set_style(area, ink());
     if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
         Canvas { buf, area }.put(area.x, area.y, TOO_SMALL, dim());
@@ -283,7 +305,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
         width: x1 - divider_x - 1,
         height: left.height,
     };
-    canvas.left_panel(left, frame);
+    canvas.left_panel(left, frame, graphics);
     let cursor = canvas.right_panel(right, frame, ui, &mut hits);
 
     // Foot.
@@ -367,10 +389,9 @@ fn scroll_to(selected: Option<usize>, visible: usize) -> usize {
     }
 }
 
-/// The even (line) positions a clef's window spans: the staff, 0..=8,
-/// widened to the line row each ledger note draws in. A space note draws in
-/// the row of the line below it, so both ends round down to even.
-fn window(notes: &[StaffNote], clef: Clef) -> (i32, i32) {
+/// The rows one clef's text window needs: the staff, widened to any ledger
+/// note.
+fn window_rows(notes: &[StaffNote], clef: Clef) -> u16 {
     let rows: Vec<i32> = notes
         .iter()
         .filter(|n| n.clef == clef)
@@ -378,17 +399,7 @@ fn window(notes: &[StaffNote], clef: Clef) -> (i32, i32) {
         .collect();
     let top = rows.iter().copied().max().unwrap_or(8).max(8);
     let bottom = rows.iter().copied().min().unwrap_or(0).min(0);
-    (round_even_down(bottom), round_even_down(top))
-}
-
-fn round_even_down(r: i32) -> i32 {
-    if r % 2 == 0 { r } else { r - 1 }
-}
-
-/// The rows one clef's window needs: one per line position.
-fn window_rows(notes: &[StaffNote], clef: Clef) -> u16 {
-    let (bottom, top) = window(notes, clef);
-    ((top - bottom) / 2 + 1) as u16
+    (top - bottom + 1) as u16
 }
 
 // MARK: - Canvas
@@ -575,13 +586,14 @@ impl Canvas<'_> {
 
     // MARK: Left panel
 
-    /// The headline box over the staff box, a rule between them.
-    fn left_panel(&mut self, left: Rect, frame: &Frame) {
+    /// The headline box over the staff box, a rule between them. With
+    /// pictures, the headline and the staff draw at pixel size.
+    fn left_panel(&mut self, left: Rect, frame: &Frame, mut graphics: Option<&mut Graphics>) {
         let headline = Rect {
             height: HEADLINE_ROWS,
             ..left
         };
-        self.headline_box(headline, frame);
+        self.headline_box(headline, frame, graphics.as_deref_mut());
 
         let rule_y = left.y + HEADLINE_ROWS;
         self.rule(left.x, rule_y, LEFT_WIDTH);
@@ -591,15 +603,33 @@ impl Canvas<'_> {
             height: left.height - HEADLINE_ROWS - 1,
             ..left
         };
-        self.staff_box(staff, frame);
+        let drawn = match graphics {
+            Some(graphics) => {
+                let picture = Rect {
+                    x: staff.x + 1,
+                    width: staff.width - 2,
+                    ..staff
+                };
+                match graphics.staff(&frame.annotations.staff, picture) {
+                    Some(protocol) => {
+                        Image::new(protocol).render(picture, self.buf);
+                        true
+                    }
+                    None => false,
+                }
+            }
+            None => false,
+        };
+        if !drawn {
+            self.staff_box(staff, frame);
+        }
     }
 
-    /// The name in lime bold on one line — a terminal has one type size, and
-    /// Michael ruled the block figure out for this skin (ticket #8, kitty
-    /// graphics, is the path to a larger headline) — with `≈` before it when
-    /// the fit is nearest; the spoken form under it; the fit detail under
-    /// that. Declined: `—` and the reason.
-    fn headline_box(&mut self, box_: Rect, frame: &Frame) {
+    /// The name in lime — as a picture in the terminal's own face at a
+    /// larger size where the terminal can show one, else one bold line —
+    /// with `≈` before it when the fit is nearest; the spoken form under it;
+    /// the fit detail under that. Declined: `—` and the reason.
+    fn headline_box(&mut self, box_: Rect, frame: &Frame, graphics: Option<&mut Graphics>) {
         let inner_x = box_.x + 1;
         let inner_w = box_.width - 2;
         let name = match frame.headline.as_ref() {
@@ -609,9 +639,23 @@ impl Canvas<'_> {
             },
             None => ABSENT.to_string(),
         };
-        let name_y = box_.y + 2;
-        self.put_centered(inner_x, name_y, inner_w, &name, lime_bold());
-        let y = name_y + 1;
+        // Two rows for the name, one blank, then the words. As a picture the
+        // name fills the two rows; as text it sits on the second.
+        let picture = Rect::new(inner_x, box_.y + 1, inner_w, 2);
+        let drawn = match (graphics, frame.headline.as_ref()) {
+            (Some(graphics), Some(_)) => match graphics.headline(&name, picture) {
+                Some(protocol) => {
+                    Image::new(protocol).render(picture, self.buf);
+                    true
+                }
+                None => false,
+            },
+            _ => false,
+        };
+        if !drawn {
+            self.put_centered(inner_x, box_.y + 2, inner_w, &name, lime_bold());
+        }
+        let y = box_.y + 4;
 
         let below: Vec<(String, Style)> = match frame.headline.as_ref() {
             Some(headline) => {
@@ -635,20 +679,20 @@ impl Canvas<'_> {
         }
     }
 
-    /// The staff: five lines a clef, one row each, `■` heads on lines and
-    /// half-block heads just above the line below a space, their accidental
-    /// in the cell to the left, short ledger lines out to the farthest note. Treble alone unless the box has room for both clefs and the gap
-    /// between; the spare rows go above and below the pair.
+    /// The text staff, for a terminal without pictures: five lines a clef,
+    /// one row per position, `■` heads with their accidental in the cell to
+    /// the left, short ledger lines out to the farthest note. Treble alone
+    /// unless the box has room for both clefs and the gap between; the spare
+    /// rows go above and below the pair.
     fn staff_box(&mut self, box_: Rect, frame: &Frame) {
         let notes = &frame.annotations.staff;
         if box_.height < BOTH_CLEFS_FROM {
-            // Every row the box has goes to the treble staff.
             self.staff(box_, Clef::Treble, notes);
             return;
         }
         // Each clef asks for the rows its window needs; a low bass note asks
-        // for more than five. A shortfall comes off the taller of the two
-        // first, never below five.
+        // for more than nine. A shortfall comes off the taller of the two
+        // first, never below nine.
         let (mut t, mut b) = (
             window_rows(notes, Clef::Treble),
             window_rows(notes, Clef::Bass),
@@ -678,83 +722,68 @@ impl Canvas<'_> {
         self.staff(bass, Clef::Bass, notes);
     }
 
-    /// One clef in `box_`, one row per line position. The window covers the
-    /// staff and every ledger line out to the farthest note; when the box is
-    /// too small, the empty edges give way first, then the ledger row
-    /// farthest from the staff. Heads stack on one column; a head on a line
-    /// is `■`, a head in a space is an upper-half block just above the line
-    /// below it; an accidental sits in the cell to the left and never moves
-    /// the head.
+    /// One clef in `box_`, one row per position. The window covers the staff
+    /// and every ledger position out to the farthest note; when the box is
+    /// too small, the empty edges give way first, then the ledger note
+    /// farthest from the staff. Heads stack on one column; an accidental
+    /// sits in the cell to the left and never moves the head.
     fn staff(&mut self, box_: Rect, clef: Clef, notes: &[StaffNote]) {
         let notes: Vec<&StaffNote> = notes.iter().filter(|n| n.clef == clef).collect();
         let rows = box_.height as i32;
         if rows <= 0 {
             return;
         }
-        let holds_at_or_above = |r: i32| notes.iter().any(|n| n.row >= r);
-        let holds_at_or_below = |r: i32| notes.iter().any(|n| n.row <= r);
-        let (mut bottom, mut top) = window(&notes.iter().map(|n| **n).collect::<Vec<_>>(), clef);
-        while (top - bottom) / 2 + 1 > rows {
-            if top > 8 && !holds_at_or_above(top - 1) {
-                top -= 2;
-            } else if bottom < 0 && (!holds_at_or_below(bottom + 1) || -bottom >= top - 8) {
+        let (note_min, note_max) = match (
+            notes.iter().map(|n| n.row).min(),
+            notes.iter().map(|n| n.row).max(),
+        ) {
+            (Some(min), Some(max)) => (min, max),
+            _ => (0, 8),
+        };
+        let mut top = note_max.max(8);
+        let mut bottom = note_min.min(0);
+        while top - bottom + 1 > rows {
+            if top > note_max {
+                top -= 1;
+            } else if bottom < note_min || (bottom < 0 && -bottom >= top - 8) {
                 // An empty bottom edge, or the ledger farthest from the staff.
-                bottom += 2;
-            } else if top > 8 {
-                top -= 2;
+                bottom += 1;
             } else {
-                break;
+                top -= 1;
             }
         }
-        // Vertically centre the window when the box is taller than it.
-        let slack = rows - ((top - bottom) / 2 + 1);
+        let slack = rows - (top - bottom + 1);
         let y_top = box_.y as i32 + slack / 2;
-        let y_of = |line: i32| (y_top + (top - line) / 2) as u16;
         let line_x = box_.x + STAFF_LINE_X;
         let head_x = line_x + STAFF_LINE_WIDTH / 2;
         let line: String = "─".repeat(STAFF_LINE_WIDTH as usize);
-
-        // Lines: the staff's five, and a short ledger line on every even
-        // position out to the farthest note, as on paper.
-        for r in (bottom..=top).step_by(2) {
-            let y = y_of(r);
-            if (0..=8).contains(&r) {
+        for row in (bottom..=top).rev() {
+            let y = (y_top + (top - row)) as u16;
+            let on_staff = (0..=8).contains(&row);
+            if on_staff && row % 2 == 0 {
                 self.put(line_x, y, &line, ink());
-            } else if (r > 8 && holds_at_or_above(r)) || (r < 0 && holds_at_or_below(r)) {
-                let width = 2 * notes.iter().filter(|n| n.row == r).count().max(1) + 1;
-                self.put(head_x - 1, y, &"─".repeat(width), ink());
             }
-        }
-
-        // Heads, lowest first; a second head on the same position (D3 beside
-        // D#3) sits two cells right, keeping the cell to its left for its
-        // accidental.
-        let mut positions: Vec<i32> = notes.iter().map(|n| n.row).collect();
-        positions.sort_unstable();
-        positions.dedup();
-        for r in positions {
-            if r < bottom || r > top {
-                continue;
+            let heads: Vec<&&StaffNote> = notes.iter().filter(|n| n.row == row).collect();
+            // Every even row off the staff between it and the farthest note
+            // is a ledger line, as on paper.
+            if !on_staff && row % 2 == 0 {
+                let reaches = if row < 0 {
+                    notes.iter().any(|n| n.row <= row)
+                } else {
+                    notes.iter().any(|n| n.row >= row)
+                };
+                if reaches {
+                    let ledger: String = "─".repeat(2 * heads.len().max(1) + 1);
+                    self.put(head_x - 1, y, &ledger, ink());
+                }
             }
-            let heads: Vec<&&StaffNote> = notes.iter().filter(|n| n.row == r).collect();
             for (index, head) in heads.iter().enumerate() {
                 let x = head_x + 2 * index as u16;
                 let accidental = head.spelled.accidental.symbol();
-                if r % 2 == 0 {
-                    let y = y_of(r);
-                    self.put(x, y, HEAD, bold());
-                    if !accidental.is_empty() {
-                        self.put(x - 1, y, accidental, bold());
-                    }
-                } else {
-                    // In the space: the upper half of the row of the line
-                    // below, so the head sits just above that line.
-                    let y = y_of(r - 1);
-                    self.put(x, y, SPACE_HEAD, bold());
-                    if !accidental.is_empty() {
-                        self.put(x - 1, y, accidental, bold());
-                    }
+                if !accidental.is_empty() {
+                    self.put(x - 1, y, accidental, bold());
                 }
+                self.put(x, y, HEAD, bold());
             }
         }
     }
