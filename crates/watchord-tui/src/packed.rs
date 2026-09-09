@@ -21,10 +21,10 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use unicode_width::UnicodeWidthStr;
+use watchord_model::notes::tags_of;
 use watchord_model::{Frame, FrameState, Screen};
 use watchord_theory::staff::{Clef, StaffNote};
 
-use crate::plain;
 use crate::push::Token;
 use crate::screens::{Drawn, Hits, ScrollTarget, UiState};
 
@@ -166,12 +166,6 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
         Canvas { buf, area }.put(area.x, area.y, TOO_SMALL, dim());
         return Drawn::default();
     }
-    if frame.screen == Screen::AllNotes {
-        // Ticket #22 repaints All Notes in this skin. Until then the plain
-        // screen stands in, so `n` and Tab still open something.
-        return plain::draw_into(area, buf, frame, ui);
-    }
-
     let mut canvas = Canvas { buf, area };
     let mut hits = Hits::default();
     let x0 = area.x;
@@ -180,7 +174,21 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
     let y1 = area.y + area.height - 1;
     let divider_x = x0 + 1 + LEFT_WIDTH;
 
-    canvas.frame_box(divider_x);
+    if frame.screen == Screen::AllNotes {
+        let body = Rect::new(x0 + 1, y0 + 3, area.width - 2, area.height - 6);
+        canvas.frame_box(None);
+        canvas.put(
+            x0 + 2,
+            y0 + 1,
+            "WATCHORD",
+            bold().add_modifier(Modifier::ITALIC),
+        );
+        let cursor = canvas.all_notes(body, frame, ui, &mut hits);
+        canvas.foot(x0 + 2, y1 - 1, x1 - 1, frame);
+        return Drawn { cursor, hits };
+    }
+
+    canvas.frame_box(Some(divider_x));
 
     // Title bar.
     canvas.put(
@@ -417,9 +425,9 @@ impl Canvas<'_> {
 
     // MARK: Chrome
 
-    /// The outer box, the rule under the title, the rule over the foot, and
-    /// the column divider through the body.
-    fn frame_box(&mut self, divider_x: u16) {
+    /// The outer box, the rule under the title, the rule over the foot, and,
+    /// on Now Playing, the column divider through the body.
+    fn frame_box(&mut self, divider_x: Option<u16>) {
         let area = self.area;
         let x0 = area.x;
         let x1 = area.x + area.width - 1;
@@ -437,11 +445,15 @@ impl Canvas<'_> {
         }
         for y in y0 + 3..y1 - 2 {
             self.put(x0, y, "│", style);
-            self.put(divider_x, y, "│", style);
             self.put(x1, y, "│", style);
         }
-        self.put(divider_x, y0 + 2, "┬", style);
-        self.put(divider_x, y1 - 2, "┴", style);
+        if let Some(divider_x) = divider_x {
+            for y in y0 + 3..y1 - 2 {
+                self.put(divider_x, y, "│", style);
+            }
+            self.put(divider_x, y0 + 2, "┬", style);
+            self.put(divider_x, y1 - 2, "┴", style);
+        }
     }
 
     /// The foot: SUSTAIN, ARPEGGIO, STATE and INPUT, each with its dot,
@@ -974,6 +986,214 @@ impl Canvas<'_> {
         hits.scroll_areas.push((list, ScrollTarget::Notes));
     }
 }
+
+impl Canvas<'_> {
+    // MARK: All Notes
+
+    /// Every note, grouped under its chord, in the packed chrome: the NOTES
+    /// header, the search field, the sort and the way back, the column
+    /// heads, then one filled row per group and one row per note. Same grid
+    /// as Now Playing. Returns the cursor position in the search field.
+    fn all_notes(
+        &mut self,
+        body: Rect,
+        frame: &Frame,
+        ui: &UiState,
+        hits: &mut Hits,
+    ) -> Option<(u16, u16)> {
+        let (x, w) = (body.x, body.width);
+        let mut y = body.y;
+        let [_, _, _, col_written, col_when] = all_notes_columns(w);
+
+        self.section_header(x, y, w, "NOTES", PINK);
+        self.put(
+            x + COL_VALUE,
+            y,
+            &format!("{} · {} GROUPS", frame.notes_total, frame.groups.len()),
+            dim_on_fill(),
+        );
+        y += 1;
+
+        // The search field, on the value column.
+        self.put(x + COL_LABEL, y, "SEARCH:", bold());
+        let field_w = w - COL_VALUE;
+        self.fill_row(x + COL_VALUE, y, field_w, on_fill());
+        let cursor = if frame.search.is_empty() {
+            self.put_cut(
+                x + COL_VALUE + 1,
+                y,
+                "type to search",
+                field_w - 1,
+                dim_on_fill(),
+            );
+            Some((x + COL_VALUE + 1, y))
+        } else {
+            let rect = self.put_cut(x + COL_VALUE + 1, y, &frame.search, field_w - 1, on_fill());
+            Some((rect.x + rect.width, y))
+        };
+        hits.field = Some(Rect::new(x + COL_VALUE, y, field_w, 1));
+        y += 1;
+
+        // Sort, and the way back.
+        let mut cursor_x = x + COL_LABEL;
+        cursor_x += self.hint_label(cursor_x, y, HintLabel::ink("SORT", "[S]").colon()) + 1;
+        self.put(cursor_x, y, &frame.notes_sort.label().to_uppercase(), ink());
+        let back = "NOW PLAYING[N]";
+        let start = x + w - back.width() as u16;
+        let end = start + self.hint_label(start, y, HintLabel::lime("NOW PLAYING", "[N]"));
+        hits.tabs
+            .push((Rect::new(start, y, end - start, 1), Screen::NowPlaying));
+        y += 1;
+
+        // Column heads.
+        self.put(x + COL_LABEL, y, "CHORD", dim_bold());
+        self.put(x + COL_VALUE, y, "NOTE", dim_bold());
+        self.put(x + col_written, y, "WRITTEN AS", dim_bold());
+        self.put(x + col_when, y, "WHEN", dim_bold());
+        y += 1;
+
+        let list = Rect::new(x, y, w, body.y + body.height - y);
+        self.groups(list, frame, ui, hits);
+        cursor
+    }
+
+    /// One flat list: a filled row per group, then its notes. The selection
+    /// is an ordinal over notes only, as on PUSH and plain.
+    fn groups(&mut self, list: Rect, frame: &Frame, ui: &UiState, hits: &mut Hits) {
+        let (x, w) = (list.x, list.width);
+        let rows = list.height as usize;
+        if rows == 0 {
+            return;
+        }
+        if frame.groups.is_empty() {
+            let word = if frame.search.is_empty() {
+                "no notes yet"
+            } else {
+                "nothing matches"
+            };
+            self.put(x + COL_LABEL, list.y, word, dim());
+            return;
+        }
+        let [_, _, _, col_written, col_when] = all_notes_columns(w);
+        enum Row<'a> {
+            Group(&'a watchord_model::NoteGroup),
+            Note(usize, &'a watchord_core::ChordNote),
+        }
+        let mut flat = Vec::new();
+        let mut ordinal = 0;
+        let mut selected_row = None;
+        for group in &frame.groups {
+            flat.push(Row::Group(group));
+            for note in &group.notes {
+                if ui.selected_all_notes == Some(ordinal) {
+                    selected_row = Some(flat.len());
+                }
+                flat.push(Row::Note(ordinal, note));
+                ordinal += 1;
+            }
+        }
+        let first = scroll_to(selected_row, rows)
+            .max(ui.scroll.all_notes)
+            .min(flat.len().saturating_sub(1));
+        let actions_w = "EDIT[E] DEL[D]".width() as u16;
+        for (row_y, row) in (list.y..).zip(flat.iter().skip(first).take(rows)) {
+            match row {
+                Row::Group(group) => {
+                    self.fill_row(x, row_y, w, on_fill());
+                    self.put_cut(
+                        x + COL_LABEL,
+                        row_y,
+                        &group.heading,
+                        COL_VALUE - 1,
+                        on_fill_bold(),
+                    );
+                    let tags: std::collections::BTreeSet<String> = tags_of(group);
+                    let tags_text = tags
+                        .iter()
+                        .map(|t| format!("#{t}"))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let count = format!("{} NOTES", group.notes.len());
+                    let summary = if tags_text.is_empty() {
+                        count
+                    } else {
+                        format!("{count}   {tags_text}")
+                    };
+                    self.put_cut(
+                        x + COL_VALUE,
+                        row_y,
+                        &summary,
+                        col_written - COL_VALUE - 1,
+                        dim_on_fill(),
+                    );
+                    self.put_cut(
+                        x + col_written,
+                        row_y,
+                        group.key.raw(),
+                        w - col_written,
+                        dim_on_fill(),
+                    );
+                }
+                Row::Note(ordinal, note) => {
+                    let is_selected = ui.selected_all_notes == Some(*ordinal);
+                    let style = if is_selected {
+                        self.fill_row(x, row_y, w, on_lime());
+                        on_lime()
+                    } else {
+                        ink()
+                    };
+                    self.put_cut(
+                        x + COL_VALUE,
+                        row_y,
+                        &note.text,
+                        col_written - COL_VALUE - 1,
+                        style,
+                    );
+                    self.put_cut(
+                        x + col_written,
+                        row_y,
+                        &note.spelling_when_written,
+                        col_when - col_written - 1,
+                        style,
+                    );
+                    hits.note_rows.push((Rect::new(x, row_y, w, 1), *ordinal));
+                    if is_selected {
+                        let mut cursor = x + w - actions_w;
+                        cursor +=
+                            self.hint_label(cursor, row_y, HintLabel::on_lime("EDIT", "[E]")) + 1;
+                        let del_x = cursor;
+                        cursor +=
+                            self.hint_label(cursor, row_y, HintLabel::red_on_lime("DEL", "[D]"));
+                        hits.delete_cells
+                            .push((Rect::new(del_x, row_y, cursor - del_x, 1), *ordinal));
+                    } else {
+                        self.put_cut(
+                            x + col_when,
+                            row_y,
+                            &crate::when::format(note.created_at),
+                            w - col_when,
+                            dim(),
+                        );
+                    }
+                }
+            }
+        }
+        hits.scroll_areas.push((list, ScrollTarget::AllNotes));
+    }
+}
+
+/// The All Notes grid for a body `w` cells wide: CHORD, NOTE, then WRITTEN
+/// AS and WHEN hanging off the right edge.
+fn all_notes_columns(w: u16) -> [u16; 5] {
+    let when = w.saturating_sub(WHEN_WIDTH);
+    let written = when.saturating_sub(WRITTEN_AS_WIDTH);
+    [COL_LABEL, COL_VALUE, COL_FIT, written, when]
+}
+
+/// `YYYY-MM-DD HH:MM`.
+const WHEN_WIDTH: u16 = 16;
+/// `WRITTEN AS` and a gap.
+const WRITTEN_AS_WIDTH: u16 = 12;
 
 /// A word with its bracketed key hint: `KEY[K][M]:`, `SAVE[⏎]`, `DEL[D]`.
 struct HintLabel<'a> {

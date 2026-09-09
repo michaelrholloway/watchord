@@ -40,7 +40,7 @@ pub struct LaunchArgs {
     /// Run the model headless and stream one JSON line per settled sounding
     /// set — pipe mode.
     pub json: bool,
-    /// `--skin push|plain`. PUSH unless asked.
+    /// `--skin push|plain|packed`. Packed unless asked.
     pub skin: Skin,
     pub version: bool,
     pub help: bool,
@@ -65,7 +65,7 @@ impl LaunchArgs {
                 "--json" => parsed.json = true,
                 "--skin" => match args.next() {
                     Some(name) => Self::set_skin(&mut parsed, &name, &mut unknown),
-                    None => unknown.push("--skin needs a name: push or plain".to_string()),
+                    None => unknown.push("--skin needs a name: push, plain or packed".to_string()),
                 },
                 "--version" | "-V" => parsed.version = true,
                 "--help" | "-h" => parsed.help = true,
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn skin_takes_a_name_in_either_spelling_and_defaults_to_push() {
+    fn skin_takes_a_name_in_either_spelling_and_defaults_to_packed() {
         let (args, unknown) = LaunchArgs::parse(["--skin".to_string(), "plain".to_string()]);
         assert!(unknown.is_empty());
         assert_eq!(args.skin, Skin::Plain);
@@ -463,12 +463,12 @@ mod tests {
         assert!(unknown.is_empty(), "{unknown:?}");
         assert_eq!(args.skin, Skin::Packed);
         let (args, _) = LaunchArgs::parse(["--fake".to_string()]);
-        assert_eq!(args.skin, Skin::Push);
+        assert_eq!(args.skin, Skin::Packed);
         let (_, unknown) = LaunchArgs::parse(["--skin".to_string(), "neon".to_string()]);
         assert_eq!(unknown.len(), 1, "{unknown:?}");
         assert!(unknown[0].contains("neon"));
         let (_, unknown) = LaunchArgs::parse(["--skin".to_string()]);
-        assert_eq!(unknown, ["--skin needs a name: push or plain"]);
+        assert_eq!(unknown, ["--skin needs a name: push, plain or packed"]);
     }
 
     #[test]

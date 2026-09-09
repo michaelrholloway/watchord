@@ -133,7 +133,7 @@ reading a constant is cut.
 
 One value that holds everything the screen shows: the sounding set, the key,
 the headline, every alternate with its score, origin, root, fit and claimed
-pitch classes, the notes, and a slot for annotations. Both skins draw from it,
+pitch classes, the notes, and a slot for annotations. Every skin draws from it,
 `--print` prints it, `--json` streams it. So the screen and the pipe cannot
 disagree. See ADR-0005.
 
@@ -198,6 +198,18 @@ with the smallest total semitone motion, found by exhaustive search. Reported
 as total semitones, common tones kept, and the largest single move. Standard
 music theory vocabulary, not coined for this app — computed for each history
 entry against the one before it.
+
+## The packed skin
+
+### Packed skin
+
+The third skin: Michael's Figma frame `48:2938`, drawn cell for cell at 80×24
+and grown into a larger terminal. Named after his frame, `80×24 (packed)`.
+Chosen with `--skin packed`; the default since spec #20. It shows what the
+design shows — the headline, the staff, the key rows, READINGS, HISTORY with
+key chips, NOTES — and nothing else. Every other field stays in the `Frame`,
+the plain skin and the pipe. Drill, settle and export have no key in this skin:
+a mode with no readout is a trap.
 
 ## The notation
 
@@ -280,8 +292,9 @@ stay in note-view's tracker and ADRs; watchord inherits them and does not restat
 
 ## Standing constraints
 
-- **The look is PUSH, as a terminal skin.** `docs/PUSH.md` is the standard;
-  ADR-0003 lists every terminal departure with its reason. The plain skin sits
-  beside it, chosen with `--skin plain`, and does not change PUSH (ADR-0005).
+- **Three skins, one frame.** The packed skin is the default (ADR-0006). PUSH
+  stays as `--skin push`, `docs/PUSH.md` its standard and ADR-0003 its
+  departures. The plain skin stays as `--skin plain` (ADR-0005). None of the
+  three changes what the app says.
 - **The app listens and never sounds.** No MIDI output, no audio.
 - **One sounding chord at a time.** Progression and key analysis are out of scope.

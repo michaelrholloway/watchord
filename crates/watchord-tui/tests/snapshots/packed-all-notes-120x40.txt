@@ -1,0 +1,40 @@
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ WATCHORD                                                                                                             │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│NOTES       9 · 4 GROUPS                                                                                            ■ │
+│SEARCH:      type to search                                                                                           │
+│SORT[S]: RECENT                                                                                         NOW PLAYING[N]│
+│CHORD       NOTE                                                                          WRITTEN AS  WHEN            │
+│C7#9        3 NOTES   #9 #hendrix #voicing                                                0.3.4.7.10                  │
+│            great over a static vamp #hendrix #voicing                                    C7#9        YYYY-MM-DD HH:MM│
+│            two hands, sustain down ⏎ lean into the #9 on top                             C7#9        YYYY-MM-DD HH:MM│
+│            the Hendrix voicing, low and wide                                             C7#9        YYYY-MM-DD HH:MM│
+│G7          2 NOTES                                                                       2.5.7.11                    │
+│            add the 13 for colour                                                         G7          YYYY-MM-DD HH:MM│
+│            the dominant, resolves down a fifth                                           G7          YYYY-MM-DD HH:MM│
+│Am7         2 NOTES                                                                       0.4.7.9                     │
+│            try dropping the root an octave                                               Am7         YYYY-MM-DD HH:MM│
+│            relative minor, same notes as C6                                              Am7         YYYY-MM-DD HH:MM│
+│CΔ7         2 NOTES                                                                       0.4.7.11                    │
+│            keep the 7th on top                                                           CΔ7         YYYY-MM-DD HH:MM│
+│            the turnaround starts here                                                    CΔ7         YYYY-MM-DD HH:MM│
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ SUSTAIN: ON ●                 ARPEGGIO[A]: ON ●                 STATE: PLAYING ●                      INPUT[I]: FAKE │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

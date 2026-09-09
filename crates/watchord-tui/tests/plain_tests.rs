@@ -718,9 +718,12 @@ fn the_running_head_shows_filter_when_a_device_is_selected() {
 }
 
 #[test]
-fn skin_parses_its_two_names_and_nothing_else() {
+fn skin_parses_its_three_names_and_nothing_else() {
     assert_eq!(Skin::parse("plain"), Some(Skin::Plain));
     assert_eq!(Skin::parse("PUSH"), Some(Skin::Push));
+    assert_eq!(Skin::parse("packed"), Some(Skin::Packed));
     assert_eq!(Skin::parse("neon"), None);
-    assert_eq!(Skin::default(), Skin::Push);
+    // The packed skin is the default since spec #20 (ADR-0006).
+    assert_eq!(Skin::default(), Skin::Packed);
+    assert_eq!(Skin::NAMES, ["push", "plain", "packed"]);
 }

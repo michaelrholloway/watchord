@@ -474,11 +474,104 @@ fn below_80x24_one_line_says_so() {
 }
 
 #[test]
-fn all_notes_still_opens_until_ticket_22() {
-    let mut model = fake_model(false);
-    model.screen = Screen::AllNotes;
-    let (rows, hits) = render(&model.frame(), &UiState::default(), 80, 24);
+fn all_notes_draws_the_groups_in_the_packed_chrome() {
+    let model = rich_model();
+    let mut frame = model.frame();
+    frame.screen = Screen::AllNotes;
+    let (rows, hits) = render(&frame, &UiState::default(), 80, 24);
     let text = text_of(&rows);
-    assert!(text.contains("GROUP"), "{text}");
-    assert!(!hits.tabs.is_empty());
+    assert_words(
+        &text,
+        &[
+            "WATCHORD",
+            "NOTES",
+            "SEARCH:",
+            "SORT[S]:",
+            "RECENT",
+            "NOW PLAYING[N]",
+            "CHORD",
+            "NOTE",
+            "WRITTEN AS",
+            "WHEN",
+            "C7#9",
+            "SUSTAIN:",
+        ],
+        &OFF_SCREEN,
+        "packed all notes",
+    );
+    // Every group heading that fits carries its note count.
+    assert!(text.contains("NOTES"), "{text}");
+    assert_eq!(hits.tabs.len(), 1);
+    assert_eq!(hits.tabs[0].1, Screen::NowPlaying);
+    assert!(hits.field.is_some());
+    assert!(!hits.note_rows.is_empty());
+    assert_snapshot("packed-all-notes-80x24", &mask_times(&rows));
+
+    let (rows, _) = render(&frame, &UiState::default(), 120, 40);
+    let text = text_of(&rows);
+    for group in &frame.groups {
+        assert!(text.contains(&group.heading), "{}\n{text}", group.heading);
+    }
+    assert_snapshot("packed-all-notes-120x40", &mask_times(&rows));
+}
+
+#[test]
+fn all_notes_selection_shows_edit_and_del_and_search_filters() {
+    let model = rich_model();
+    let mut frame = model.frame();
+    frame.screen = Screen::AllNotes;
+    let ui = UiState {
+        selected_all_notes: Some(0),
+        ..UiState::default()
+    };
+    let (rows, hits) = render(&frame, &ui, 80, 24);
+    let text = text_of(&rows);
+    assert_words(
+        &text,
+        &["EDIT[E]", "DEL[D]"],
+        &[],
+        "packed all notes selected",
+    );
+    assert_eq!(hits.delete_cells.len(), 1);
+    assert_eq!(hits.delete_cells[0].1, 0);
+
+    // A typed search shows in the field.
+    let mut model = rich_model();
+    model.screen = Screen::AllNotes;
+    model.search_text = "hendrix".to_string();
+    let frame = model.frame();
+    let (rows, _) = render(&frame, &UiState::default(), 80, 24);
+    let text = text_of(&rows);
+    assert!(text.contains("hendrix"), "{text}");
+    assert!(!text.contains("type to search"), "{text}");
+}
+
+/// `2026-08-28 13:46` -> `YYYY-MM-DD HH:MM`, as the other skins' tests mask it.
+fn mask_times(rows: &[String]) -> Vec<String> {
+    rows.iter()
+        .map(|row| {
+            let chars: Vec<char> = row.chars().collect();
+            let mut out = String::new();
+            let mut i = 0;
+            while i < chars.len() {
+                let is_stamp = i + 16 <= chars.len()
+                    && "0000-00-00 00:00".chars().enumerate().all(|(k, pattern)| {
+                        let c = chars[i + k];
+                        if pattern == '0' {
+                            c.is_ascii_digit()
+                        } else {
+                            c == pattern
+                        }
+                    });
+                if is_stamp {
+                    out.push_str("YYYY-MM-DD HH:MM");
+                    i += 16;
+                } else {
+                    out.push(chars[i]);
+                    i += 1;
+                }
+            }
+            out
+        })
+        .collect()
 }

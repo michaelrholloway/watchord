@@ -10,4 +10,8 @@ From v0.1.0:
 - `npx watchord`
 - `cargo install watchord`
 
+`watchord` opens the packed skin, the 80×24 design. `--skin push` and
+`--skin plain` draw the two older skins; `--fake-rich` plays a scripted session
+with no hardware.
+
 [Every field the plain skin shows, with examples.](docs/fields.md)

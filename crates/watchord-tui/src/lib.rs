@@ -20,17 +20,18 @@ pub mod when;
 pub use screens::{Drawn, Hits, ScrollTarget, UiState, draw, draw_into};
 pub use tui::{PANIC_TEST_VAR, restore, run};
 
-/// Which skin draws the frame. `--skin push|plain`; the default is PUSH.
+/// Which skin draws the frame. `--skin push|plain|packed`; the default is
+/// packed (spec #20).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Skin {
     /// PUSH, drawn with its tokens and box roles. The look standard.
-    #[default]
     Push,
     /// The plain skin: default foreground and background, no colour, no boxes,
     /// every field of the frame on screen.
     Plain,
     /// The packed skin: Michael's Figma frame at 80×24 (spec #20). Shows what
-    /// the design shows; binds no key to drill, settle or export.
+    /// the design shows; binds no key to drill, settle or export. The default.
+    #[default]
     Packed,
 }
 

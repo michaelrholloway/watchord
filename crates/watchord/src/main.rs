@@ -14,12 +14,13 @@ use composition::{Composition, LaunchArgs};
 const USAGE: &str = "\
 watchord — watches MIDI and names the chord being played
 
-usage: watchord [--input <name>] [--skin push|plain] [--print | --json]
-       watchord --fake | --fake-released | --fake-fit | --fake-nearest | --fake-rich [--all-notes] [--skin push|plain] [--print | --json]
+usage: watchord [--input <name>] [--skin packed|push|plain] [--print | --json]
+       watchord --fake | --fake-released | --fake-fit | --fake-nearest | --fake-rich [--all-notes] [--skin packed|push|plain] [--print | --json]
 
   --input <name>    listen only to inputs whose name contains <name>
-  --skin <name>     which skin draws: push (default) or plain — the plain
-                    skin is white on black, no boxes, every field shown
+  --skin <name>     which skin draws: packed (default), the 80×24 design;
+                    push, the PUSH look; or plain — white on black, no
+                    boxes, every field shown
   --print           run headless: print every field of the frame as labelled
                     plain lines (a fake exits; live streams until Ctrl-C)
   --json            run headless: stream the frame as one JSON line per
