@@ -459,6 +459,9 @@ mod tests {
         assert_eq!(args.skin, Skin::Plain);
         let (args, _) = LaunchArgs::parse(["--skin=push".to_string()]);
         assert_eq!(args.skin, Skin::Push);
+        let (args, unknown) = LaunchArgs::parse(["--skin=packed".to_string()]);
+        assert!(unknown.is_empty(), "{unknown:?}");
+        assert_eq!(args.skin, Skin::Packed);
         let (args, _) = LaunchArgs::parse(["--fake".to_string()]);
         assert_eq!(args.skin, Skin::Push);
         let (_, unknown) = LaunchArgs::parse(["--skin".to_string(), "neon".to_string()]);

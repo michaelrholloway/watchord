@@ -199,6 +199,19 @@ pub struct FrameHistoryEntry {
     pub seconds_since_previous: Option<u64>,
     /// How far the hand moved from the entry before it.
     pub voice_leading: Option<FrameVoiceLeading>,
+    /// The keys as note names, `C3  E3  G3  A3` — the packed skin's chips
+    /// (spec #20). `#[serde(default)]`: a frame written before it existed
+    /// still parses.
+    #[serde(default)]
+    pub keys: String,
+    /// The entry's headline numeral against `Frame::key_context`, or `None`
+    /// with no key set (spec #20).
+    #[serde(default)]
+    pub numeral: Option<String>,
+    /// The entry's headline role against `Frame::key_context`, or `None`
+    /// with no key set (spec #20).
+    #[serde(default)]
+    pub function: Option<Function>,
 }
 
 /// Voice leading between one history entry and the one before it — the

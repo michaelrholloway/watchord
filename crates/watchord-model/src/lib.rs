@@ -448,13 +448,20 @@ impl AppModel {
             PedalKind::Sostenuto => {
                 self.sostenuto = control.down;
                 if control.down {
-                    self.arpeggio = !self.arpeggio;
-                    if !self.arpeggio {
-                        self.arpeggio_notes = SoundingSet::silent();
-                    }
+                    self.toggle_arpeggio();
                 }
             }
             PedalKind::Soft => self.soft = control.down,
+        }
+    }
+
+    /// Flips arpeggio mode — the same flip the sostenuto pedal's down edge
+    /// performs, bound to `a` in the packed skin (spec #20). Leaving the mode
+    /// drops the notes accumulated so far, so the next note-on starts fresh.
+    pub fn toggle_arpeggio(&mut self) {
+        self.arpeggio = !self.arpeggio;
+        if !self.arpeggio {
+            self.arpeggio_notes = SoundingSet::silent();
         }
     }
 
@@ -599,15 +606,16 @@ impl AppModel {
         self.history_cursor.is_some() || self.is_released
     }
 
-    /// The headline name for one history entry, independent of what is
-    /// currently displayed — for the strip and for export.
-    fn entry_headline_text(&self, sounding: &SoundingSet) -> String {
+    /// The headline for one history entry as the frame carries it — name,
+    /// numeral and function against the current key context — independent
+    /// of what is currently displayed. `None` for a set the engine declined;
+    /// the strip then names its pitch classes instead.
+    fn entry_headline(&self, sounding: &SoundingSet) -> Option<FrameReading> {
         let analysis = self.naming.analyze(sounding);
         let bass = sounding.bass_pitch_class();
-        match analysis.headline.as_ref() {
-            Some(reading) => ReadingDisplay::new(reading, bass).name,
-            None => NoteName::pitch_classes_row(sounding),
-        }
+        analysis.headline.as_ref().map(|reading| {
+            FrameReading::new(reading, bass).with_key_context(self.key_context, reading)
+        })
     }
 
     // MARK: - Drill
@@ -1091,20 +1099,29 @@ impl AppModel {
         let history = self
             .history
             .iter()
-            .map(|entry| FrameHistoryEntry {
-                name: self.entry_headline_text(&entry.sounding),
-                key: entry.sounding.key(),
-                at_unix_seconds: entry
-                    .at
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                seconds_since_previous: entry.seconds_since_previous,
-                voice_leading: entry.voice_leading.map(|vl| FrameVoiceLeading {
-                    total_semitones: vl.total_semitones,
-                    common_tones_kept: vl.common_tones_kept,
-                    largest_move: vl.largest_move,
-                }),
+            .map(|entry| {
+                let headline = self.entry_headline(&entry.sounding);
+                FrameHistoryEntry {
+                    name: headline
+                        .as_ref()
+                        .map(|h| h.name.clone())
+                        .unwrap_or_else(|| NoteName::pitch_classes_row(&entry.sounding)),
+                    keys: NoteName::keys_row(&entry.sounding),
+                    numeral: headline.as_ref().and_then(|h| h.numeral.clone()),
+                    function: headline.as_ref().and_then(|h| h.function),
+                    key: entry.sounding.key(),
+                    at_unix_seconds: entry
+                        .at
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                    seconds_since_previous: entry.seconds_since_previous,
+                    voice_leading: entry.voice_leading.map(|vl| FrameVoiceLeading {
+                        total_semitones: vl.total_semitones,
+                        common_tones_kept: vl.common_tones_kept,
+                        largest_move: vl.largest_move,
+                    }),
+                }
             })
             .collect();
         let history_step = self.history_cursor.map(|i| HistoryStep {

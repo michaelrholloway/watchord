@@ -448,6 +448,40 @@ mod tests {
         assert!(!text.contains("ZZZ_NOT_A_LABEL"), "{text}");
     }
 
+    /// A frame written before spec #20 has history entries with no `keys`,
+    /// `numeral` or `function`. It still parses, with the three at their
+    /// defaults, and a frame written today carries all three.
+    #[test]
+    fn history_entries_parse_without_the_packed_skin_fields() {
+        let mut model = watchord_model::fakes::rich_demo(watchord_model::Screen::NowPlaying);
+        model.start();
+        while model.wait(std::time::Duration::from_millis(50)) {}
+        let frame = model.frame();
+        let mut value: serde_json::Value =
+            serde_json::from_str(&json_line(&frame)).expect("parses");
+        let entries = value["history"].as_array_mut().expect("history");
+        assert!(!entries.is_empty());
+        for entry in entries.iter() {
+            assert!(entry.get("keys").is_some());
+            assert!(entry.get("numeral").is_some());
+            assert!(entry.get("function").is_some());
+        }
+        for entry in entries.iter_mut() {
+            let object = entry.as_object_mut().expect("an object");
+            object.remove("keys");
+            object.remove("numeral");
+            object.remove("function");
+        }
+        let old: Frame = serde_json::from_value(value).expect("an old frame still parses");
+        assert_eq!(old.history.len(), frame.history.len());
+        assert!(old.history.iter().all(|e| e.keys.is_empty()));
+        assert!(old.history.iter().all(|e| e.numeral.is_none()));
+        // Control: the live frame's last entry does carry the key facts.
+        let last = frame.history.last().expect("an entry");
+        assert!(!last.keys.is_empty());
+        assert!(last.numeral.is_some(), "{last:?}");
+    }
+
     #[test]
     fn json_lines_carry_the_history_field() {
         let model = model_with_two_chords();

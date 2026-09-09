@@ -1,14 +1,16 @@
 //! watchord-tui: the terminal skins.
 //!
-//! Two skins draw the same [`watchord_model::Frame`]. [`push`] holds PUSH's
+//! Three skins draw the same [`watchord_model::Frame`]. [`push`] holds PUSH's
 //! tokens, the six structural roles and the ported elements — the only module
 //! that draws a rule or a box. [`figure`] is the headline drawn large.
 //! [`screens`] composes PUSH's two screens. [`plain`] is the plain skin: the
-//! terminal's own colours, no boxes, every field. [`tui`] owns the terminal
-//! and the one event loop both skins share.
+//! terminal's own colours, no boxes, every field. [`packed`] is the packed
+//! skin: Michael's Figma frame at 80×24. [`tui`] owns the terminal and the
+//! one event loop all three share.
 
 pub mod export;
 pub mod figure;
+pub mod packed;
 pub mod plain;
 pub mod push;
 pub mod screens;
@@ -27,17 +29,21 @@ pub enum Skin {
     /// The plain skin: default foreground and background, no colour, no boxes,
     /// every field of the frame on screen.
     Plain,
+    /// The packed skin: Michael's Figma frame at 80×24 (spec #20). Shows what
+    /// the design shows; binds no key to drill, settle or export.
+    Packed,
 }
 
 impl Skin {
     /// The names `--skin` accepts.
-    pub const NAMES: [&'static str; 2] = ["push", "plain"];
+    pub const NAMES: [&'static str; 3] = ["push", "plain", "packed"];
 
     /// `push` or `plain`, case-insensitive. `None` for anything else.
     pub fn parse(name: &str) -> Option<Self> {
         match name.to_ascii_lowercase().as_str() {
             "push" => Some(Skin::Push),
             "plain" => Some(Skin::Plain),
+            "packed" => Some(Skin::Packed),
             _ => None,
         }
     }
@@ -47,6 +53,14 @@ impl Skin {
         match self {
             Skin::Push => "push",
             Skin::Plain => "plain",
+            Skin::Packed => "packed",
         }
+    }
+
+    /// True for the skins that draw drill, settle and export and so bind
+    /// their keys. The packed skin draws none of them and binds none of them:
+    /// a mode with no readout is a trap (spec #20).
+    pub fn binds_hidden_modes(self) -> bool {
+        self != Skin::Packed
     }
 }

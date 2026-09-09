@@ -26,7 +26,7 @@ use watchord_model::{AppModel, Frame, Screen};
 
 use crate::export;
 use crate::screens::{self, Hits, ScrollTarget, UiState};
-use crate::{Skin, plain};
+use crate::{Skin, packed, plain};
 
 /// One tick of the loop: how long a key wait blocks before the model is polled.
 const TICK: Duration = Duration::from_millis(50);
@@ -122,6 +122,8 @@ enum Action {
     CycleKeyTonic,
     /// `m`: flips the key context's mode, major/minor (ticket #16).
     ToggleKeyMode,
+    /// `a` in the packed skin: flips arpeggio mode (spec #20).
+    ToggleArpeggio,
     Nothing,
 }
 
@@ -145,7 +147,31 @@ enum Action {
 /// is read from that combination. Some terminals never distinguish Shift-Enter
 /// from a bare Enter at the protocol level, and on those this cannot tell the
 /// two apart; there is no workaround from here.
+#[cfg(test)]
 fn action_for(
+    key: KeyEvent,
+    screen: Screen,
+    active_field_is_empty: bool,
+    has_selection: bool,
+    picker_open: bool,
+) -> Action {
+    action_for_skin(
+        Skin::Push,
+        key,
+        screen,
+        active_field_is_empty,
+        has_selection,
+        picker_open,
+    )
+}
+
+/// [`action_for`] with the skin's own key table. PUSH and plain bind every
+/// key. The packed skin (spec #20) binds none of `p`, `-`, `+`, `x` and
+/// Ctrl-x — it draws no drill, settle or export, and a mode with no readout
+/// is a trap — and adds `a` (arpeggio) and `n` (switch screen), both only
+/// with an empty field, as the design's `[A]` and `[N]` hints say.
+fn action_for_skin(
+    skin: Skin,
     key: KeyEvent,
     screen: Screen,
     active_field_is_empty: bool,
@@ -157,9 +183,13 @@ fn action_for(
     }
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+    let hidden = skin.binds_hidden_modes();
+    let packed = skin == Skin::Packed;
     match key.code {
         KeyCode::Char('c') if ctrl => Action::Quit,
-        KeyCode::Char('x') if ctrl => Action::ExportJson,
+        KeyCode::Char('x') if ctrl && hidden => Action::ExportJson,
+        KeyCode::Char('a') if packed && active_field_is_empty => Action::ToggleArpeggio,
+        KeyCode::Char('n') if packed && active_field_is_empty => Action::NextScreen,
         KeyCode::Up if picker_open => Action::PickerUp,
         KeyCode::Down if picker_open => Action::PickerDown,
         KeyCode::Enter if picker_open => Action::PickerSelect,
@@ -170,13 +200,13 @@ fn action_for(
         KeyCode::Char('s') if active_field_is_empty && screen == Screen::AllNotes => {
             Action::CycleSort
         }
-        KeyCode::Char('p') if active_field_is_empty => Action::ToggleDrill,
+        KeyCode::Char('p') if active_field_is_empty && hidden => Action::ToggleDrill,
         KeyCode::Char('i') if active_field_is_empty => Action::ToggleInputPicker,
-        KeyCode::Char('-') if active_field_is_empty => Action::SettleDown,
-        KeyCode::Char('+') if active_field_is_empty => Action::SettleUp,
+        KeyCode::Char('-') if active_field_is_empty && hidden => Action::SettleDown,
+        KeyCode::Char('+') if active_field_is_empty && hidden => Action::SettleUp,
         KeyCode::Char('k') if active_field_is_empty => Action::CycleKeyTonic,
         KeyCode::Char('m') if active_field_is_empty => Action::ToggleKeyMode,
-        KeyCode::Char('x') if active_field_is_empty => Action::ExportMarkdown,
+        KeyCode::Char('x') if active_field_is_empty && hidden => Action::ExportMarkdown,
         KeyCode::Tab => Action::NextScreen,
         KeyCode::BackTab => Action::PreviousScreen,
         KeyCode::Up => Action::SelectUp,
@@ -341,6 +371,7 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
         Action::SettleUp => model.increase_settle(),
         Action::CycleKeyTonic => model.cycle_key_tonic(),
         Action::ToggleKeyMode => model.toggle_key_mode(),
+        Action::ToggleArpeggio => model.toggle_arpeggio(),
         Action::Nothing => {}
     }
     true
@@ -371,6 +402,7 @@ fn draw(target: &mut ratatui::Frame, skin: Skin, model: &AppModel, ui: &UiState)
     match skin {
         Skin::Push => screens::draw(target, &frame, ui),
         Skin::Plain => plain::draw(target, &frame, ui),
+        Skin::Packed => packed::draw(target, &frame, ui),
     }
 }
 
@@ -405,7 +437,8 @@ pub fn run(mut model: AppModel, skin: Skin) -> io::Result<()> {
                         Screen::NowPlaying => model.draft_note_text.is_empty(),
                         Screen::AllNotes => model.search_text.is_empty(),
                     };
-                    let action = action_for(
+                    let action = action_for_skin(
+                        skin,
                         key,
                         model.screen,
                         active_field_is_empty,
@@ -1098,5 +1131,93 @@ mod tests {
         apply(Action::SettleUp, &mut model, &mut UiState::default());
         apply(Action::SettleUp, &mut model, &mut UiState::default());
         assert_eq!(model.settle_ms(), 70);
+    }
+
+    // MARK: - The packed skin's key table (spec #20)
+
+    fn packed(code: KeyCode, empty: bool) -> Action {
+        action_for_skin(
+            Skin::Packed,
+            key(code),
+            Screen::NowPlaying,
+            empty,
+            false,
+            false,
+        )
+    }
+
+    #[test]
+    fn packed_binds_a_to_arpeggio_and_n_to_the_next_screen_with_an_empty_field() {
+        assert_eq!(packed(KeyCode::Char('a'), true), Action::ToggleArpeggio);
+        assert_eq!(packed(KeyCode::Char('n'), true), Action::NextScreen);
+        // With text in the field the letters are text.
+        assert_eq!(packed(KeyCode::Char('a'), false), Action::Type('a'));
+        assert_eq!(packed(KeyCode::Char('n'), false), Action::Type('n'));
+        // The other skins never saw these bindings and still do not.
+        for skin in [Skin::Push, Skin::Plain] {
+            let action = action_for_skin(
+                skin,
+                key(KeyCode::Char('a')),
+                Screen::NowPlaying,
+                true,
+                false,
+                false,
+            );
+            assert_eq!(action, Action::Type('a'), "{skin:?}");
+        }
+    }
+
+    #[test]
+    fn packed_binds_no_key_to_drill_settle_or_export() {
+        // The letters type; the skin has no readout for what they did.
+        assert_eq!(packed(KeyCode::Char('p'), true), Action::Type('p'));
+        assert_eq!(packed(KeyCode::Char('-'), true), Action::Type('-'));
+        assert_eq!(packed(KeyCode::Char('+'), true), Action::Type('+'));
+        assert_eq!(packed(KeyCode::Char('x'), true), Action::Type('x'));
+        let ctrl_x = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL);
+        assert_eq!(
+            action_for_skin(Skin::Packed, ctrl_x, Screen::NowPlaying, true, false, false),
+            Action::Nothing
+        );
+        // Control: the plain skin still binds every one of them.
+        let plain = |code| {
+            action_for_skin(
+                Skin::Plain,
+                key(code),
+                Screen::NowPlaying,
+                true,
+                false,
+                false,
+            )
+        };
+        assert_eq!(plain(KeyCode::Char('p')), Action::ToggleDrill);
+        assert_eq!(plain(KeyCode::Char('-')), Action::SettleDown);
+        assert_eq!(plain(KeyCode::Char('x')), Action::ExportMarkdown);
+        assert_eq!(
+            action_for_skin(Skin::Plain, ctrl_x, Screen::NowPlaying, true, false, false),
+            Action::ExportJson
+        );
+    }
+
+    #[test]
+    fn packed_keeps_every_other_binding() {
+        assert_eq!(packed(KeyCode::Char('q'), true), Action::Quit);
+        assert_eq!(packed(KeyCode::Char('i'), true), Action::ToggleInputPicker);
+        assert_eq!(packed(KeyCode::Char('k'), true), Action::CycleKeyTonic);
+        assert_eq!(packed(KeyCode::Char('m'), true), Action::ToggleKeyMode);
+        assert_eq!(packed(KeyCode::Tab, true), Action::NextScreen);
+        assert_eq!(packed(KeyCode::Left, false), Action::StepHistoryBack);
+        assert_eq!(packed(KeyCode::Enter, false), Action::Commit);
+    }
+
+    #[test]
+    fn toggle_arpeggio_flips_the_mode_both_ways() {
+        let mut model = model_with_notes();
+        assert!(!model.is_arpeggio());
+        apply(Action::ToggleArpeggio, &mut model, &mut UiState::default());
+        assert!(model.is_arpeggio());
+        assert!(model.frame().arpeggio);
+        apply(Action::ToggleArpeggio, &mut model, &mut UiState::default());
+        assert!(!model.is_arpeggio());
     }
 }
