@@ -283,9 +283,23 @@ fn a_taller_terminal_gives_the_lists_more_rows() {
     let frame = model.frame();
     let (rows, _) = render(&frame, &UiState::default(), 120, 40);
     let text = text_of(&rows);
-    // Nine history entries: at 40 rows they all show; at 24 only the newest.
-    for entry in &frame.history {
-        assert!(text.contains(&entry.name), "{}\n{text}", entry.name);
+    // Nine history entries, spaced by a blank row so the chips do not touch:
+    // at 40 rows the newest seven show; at 50 all nine; at 24 only the newest.
+    let names: Vec<&str> = frame.history.iter().map(|e| e.name.as_str()).collect();
+    for name in &names[2..] {
+        assert!(text.contains(name), "{name}\n{text}");
+    }
+    // A blank row between entries: G7's row is two below Dm7's.
+    let row_of = |name: &str| {
+        rows.iter()
+            .position(|r| r.contains(&format!("│{name:<12}")))
+            .unwrap_or_else(|| panic!("{name} row\n{text}"))
+    };
+    assert_eq!(row_of("G7"), row_of("Dm7") + 2, "{text}");
+    let (tall, _) = render(&frame, &UiState::default(), 120, 50);
+    let tall_text = text_of(&tall);
+    for name in &names {
+        assert!(tall_text.contains(name), "{name} at 50 rows\n{tall_text}");
     }
     assert_words(
         &text,
@@ -326,7 +340,7 @@ fn both_clefs_draw_from_34_rows_and_treble_alone_below() {
             .map(|r| r.chars().take(27).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n");
-        (left.matches('●').count(), rows)
+        (left.matches('■').count(), rows)
     };
     let (heads_24, _) = heads_at(24);
     let (heads_34, rows_34) = heads_at(34);

@@ -39,12 +39,25 @@ serves every skin.
 
 **Terminal departures from the frame**, with reasons:
 
-- Section borders are filled header rows, not rules. A rule row costs a whole
-  line at 24 rows.
+- The headline is the two-row block figure (ADR-0003 (e)) when the name fits
+  the 24-cell box — about five characters — and one bold line when it does not.
+  A terminal has one type size; the figure is the only way to draw it large.
+- The design's section borders are rule rows. A rule row costs a whole line, so
+  at 24 rows there are none; the first three spare rows draw them, before any
+  list grows.
+- History entries take a blank row between them whenever two spaced entries
+  fit, so the key chips of adjacent rows do not touch. Spacing comes before
+  showing every entry.
+- Note heads are `■` on one column; an accidental sits in the cell to the left
+  and never moves the head. Two heads on one row (D3 and D#3) sit two cells
+  apart.
 - Treble staff only at 24 rows; both clefs from 34. A five-line staff is nine
-  terminal rows, and two do not fit in the ten-row box. When notes outrun the
-  box, the empty staff edges give way first, then the ledger note farthest
+  terminal rows, and two do not fit in the ten-row box. The two staves sit
+  tight, one row apart, with the spare rows above and below. When notes outrun
+  the box, the empty staff edges give way first, then the ledger note farthest
   from the staff.
+- The table grid is fixed from the left. FIT widens with the terminal up to 26
+  cells; NUMERAL and FUNCTION follow it rather than hanging off the far edge.
 - The FIT column shows the tier word; the detail sits under the spoken name in
   the headline box. At 80 columns the column has eight cells.
 - `SAVE[⏎]`, not `SAVE[S]`: the field takes every printable key.

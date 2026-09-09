@@ -1,13 +1,13 @@
 //! The packed skin: Michael's Figma frame `48:2938`, cell for cell at 80×24,
-//! growing into a larger terminal (spec #20).
+//! growing into a larger terminal (spec #20, ADR-0006).
 //!
 //! One outer box. A title bar, a body split into a 26-cell left panel and a
 //! right panel that takes the rest, and a foot. Left: the headline box over
 //! the staff box. Right, on one column grid: the KEY, FUNCTION, NUMERAL and
 //! KEYS rows; the READINGS table; the HISTORY table; the NOTES section with
-//! the field and the saved notes. Section headers are rows filled `#1E1E1E`
-//! and they separate the sections — a border row would cost a whole line at
-//! 24 rows.
+//! the field and the saved notes. Section headers are rows filled `#1E1E1E`.
+//! The design's section borders are rule rows; at 24 rows there is no row to
+//! spare for them, so they appear as the terminal grows, before any list does.
 //!
 //! What the frame carries and the skin does not draw stays in the frame:
 //! drill, settle, the sostenuto and soft pedals, score, root, claimed,
@@ -18,13 +18,15 @@
 //! fills the same [`Hits`], and [`crate::tui`] reads them the same way.
 
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Paragraph, Widget};
 use unicode_width::UnicodeWidthStr;
 use watchord_model::notes::tags_of;
 use watchord_model::{Frame, FrameState, Screen};
 use watchord_theory::staff::{Clef, StaffNote};
 
+use crate::figure;
 use crate::push::Token;
 use crate::screens::{Drawn, Hits, ScrollTarget, UiState};
 
@@ -93,6 +95,12 @@ fn on_fill_bold() -> Style {
 fn dim_on_fill() -> Style {
     Style::default().fg(DIM.color()).bg(FILL.color())
 }
+fn lime_on_fill_bold() -> Style {
+    Style::default()
+        .fg(LIME.color())
+        .bg(FILL.color())
+        .add_modifier(Modifier::BOLD)
+}
 /// Text on the selected note row: black on lime.
 fn on_lime() -> Style {
     Style::default().fg(GROUND.color()).bg(LIME.color())
@@ -118,19 +126,25 @@ const STAFF_LINE_WIDTH: u16 = 10;
 const STAFF_LINE_X: u16 = 8;
 
 /// The right panel's grid, as offsets from its left edge: the label or NAME
-/// column, then the second column every section shares, then FIT. NUMERAL
-/// and FUNCTION hang off the right edge at fixed widths, so a wider terminal
-/// widens FIT (and the history chips), where the long values are.
+/// column, the second column every section shares, then FIT (the history
+/// chips share its room), NUMERAL and FUNCTION. FIT takes a wider terminal's
+/// slack up to a cap, so the two right columns stay near the rest of the
+/// table rather than hanging off the far edge.
 const COL_LABEL: u16 = 0;
 const COL_VALUE: u16 = 12;
 const COL_FIT: u16 = 23;
+const FIT_MIN: u16 = 9;
+const FIT_MAX: u16 = 26;
 const NUMERAL_WIDTH: u16 = 8;
 const FUNCTION_WIDTH: u16 = 11;
 
 /// The five column starts for a panel `w` cells wide.
 fn columns(w: u16) -> [u16; 5] {
-    let function = w.saturating_sub(FUNCTION_WIDTH);
-    let numeral = function.saturating_sub(NUMERAL_WIDTH);
+    let fit = w
+        .saturating_sub(COL_FIT + NUMERAL_WIDTH + FUNCTION_WIDTH)
+        .clamp(FIT_MIN, FIT_MAX);
+    let numeral = COL_FIT + fit;
+    let function = numeral + NUMERAL_WIDTH;
     [COL_LABEL, COL_VALUE, COL_FIT, numeral, function]
 }
 
@@ -140,11 +154,54 @@ const ELLIPSIS: &str = "…";
 const DOT: &str = "●";
 const SQUARE: &str = "■";
 
-/// The rows each list is guaranteed at 24 rows. Spare rows go to readings
-/// first, then notes, then history.
+/// The rows each list is guaranteed at 24 rows.
 const READINGS_MIN: usize = 2;
 const HISTORY_MIN: usize = 1;
 const NOTES_MIN: usize = 4;
+/// The rule rows the right panel draws when there is room: after the field
+/// block, after the readings, after the history.
+const RULES_MAX: usize = 3;
+
+/// How the right panel's body rows are spent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Layout {
+    /// Rule rows drawn between sections, 0..=3, in order from the top.
+    rules: usize,
+    readings: usize,
+    history: usize,
+    notes: usize,
+}
+
+/// Spare rows beyond the minimums go, in order: to the section rules, to
+/// readings until every reading shows, to notes until every note shows, to
+/// history until every entry shows with a blank row between entries, then
+/// the rest to notes.
+fn allocate(rows: u16, readings: usize, history: usize, notes: usize) -> Layout {
+    const FIXED: usize = 4 + 2 + 2 + 3;
+    let variable = (rows as usize).saturating_sub(FIXED);
+    let mut layout = Layout {
+        rules: 0,
+        readings: READINGS_MIN,
+        history: HISTORY_MIN,
+        notes: NOTES_MIN,
+    };
+    let mut spare = variable.saturating_sub(READINGS_MIN + HISTORY_MIN + NOTES_MIN);
+    let give = spare.min(RULES_MAX);
+    layout.rules += give;
+    spare -= give;
+    let give = spare.min(readings.max(1).saturating_sub(layout.readings));
+    layout.readings += give;
+    spare -= give;
+    let give = spare.min(notes.saturating_sub(layout.notes));
+    layout.notes += give;
+    spare -= give;
+    let spaced = (2 * history).saturating_sub(1);
+    let give = spare.min(spaced.saturating_sub(layout.history));
+    layout.history += give;
+    spare -= give;
+    layout.notes += spare;
+    layout
+}
 
 // MARK: - Entry
 
@@ -166,6 +223,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
         Canvas { buf, area }.put(area.x, area.y, TOO_SMALL, dim());
         return Drawn::default();
     }
+
     let mut canvas = Canvas { buf, area };
     let mut hits = Hits::default();
     let x0 = area.x;
@@ -301,29 +359,6 @@ fn scroll_to(selected: Option<usize>, visible: usize) -> usize {
     }
 }
 
-/// How many rows each list gets: the guaranteed minimum, then spare rows to
-/// readings until every reading shows, then notes, then history, then the
-/// rest to notes.
-fn allocate(rows: u16, readings: usize, history: usize, notes: usize) -> (usize, usize, usize) {
-    const FIXED: usize = 4 + 2 + 2 + 3;
-    let variable = (rows as usize).saturating_sub(FIXED);
-    let mut read_rows = READINGS_MIN;
-    let mut hist_rows = HISTORY_MIN;
-    let mut note_rows = NOTES_MIN;
-    let mut spare = variable.saturating_sub(READINGS_MIN + HISTORY_MIN + NOTES_MIN);
-    let give = spare.min(readings.max(1).saturating_sub(read_rows));
-    read_rows += give;
-    spare -= give;
-    let give = spare.min(notes.saturating_sub(note_rows));
-    note_rows += give;
-    spare -= give;
-    let give = spare.min(history.saturating_sub(hist_rows));
-    hist_rows += give;
-    spare -= give;
-    note_rows += spare;
-    (read_rows, hist_rows, note_rows)
-}
-
 /// The rows one clef's window needs: the staff, widened to any ledger note.
 fn window_rows(notes: &[StaffNote], clef: Clef) -> u16 {
     let rows: Vec<i32> = notes
@@ -384,6 +419,13 @@ impl Canvas<'_> {
         self.put(x + pad as u16, y, &text, style);
     }
 
+    /// A rule across `width` cells at `(x, y)`, joined to the vertical lines
+    /// on either side: `├────┤`.
+    fn rule(&mut self, x: u16, y: u16, width: u16) {
+        let line: String = "─".repeat(width as usize);
+        self.put(x - 1, y, &format!("├{line}┤"), ink());
+    }
+
     /// `LABEL[K]:` — the word in `word_style`, the bracketed keys dim, the
     /// colon in ink. Returns the width written.
     fn hint_label(&mut self, x: u16, y: u16, label: HintLabel) -> u16 {
@@ -393,7 +435,7 @@ impl Canvas<'_> {
             cursor += self.put(cursor, y, label.keys, label.keys_style).width;
         }
         if label.colon {
-            cursor += self.put(cursor, y, ":", bold()).width;
+            cursor += self.put(cursor, y, ":", label.colon_style).width;
         }
         cursor - x
     }
@@ -476,7 +518,7 @@ impl Canvas<'_> {
         let gap = width.saturating_sub(used) / 3;
 
         let mut cursor = x;
-        cursor += self.put(cursor, y, "SUSTAIN:", bold()).width + 1;
+        cursor += self.put(cursor, y, "SUSTAIN:", ink()).width + 1;
         cursor += self.on_off(cursor, y, frame.sustain);
         cursor += gap;
         cursor += self.hint_label(cursor, y, HintLabel::lime("ARPEGGIO", "[A]").colon()) + 1;
@@ -507,8 +549,7 @@ impl Canvas<'_> {
         self.headline_box(headline, frame);
 
         let rule_y = left.y + HEADLINE_ROWS;
-        let rule: String = "─".repeat(LEFT_WIDTH as usize);
-        self.put(left.x - 1, rule_y, &format!("├{rule}┤"), ink());
+        self.rule(left.x, rule_y, LEFT_WIDTH);
 
         let staff = Rect {
             y: rule_y + 1,
@@ -518,13 +559,13 @@ impl Canvas<'_> {
         self.staff_box(staff, frame);
     }
 
-    /// The name large in lime, `≈` before it when the fit is nearest; the
-    /// spoken form under it; the fit detail under that. Declined: `—` and
-    /// the reason.
+    /// The name large in lime — as the two-row headline figure (ADR-0003
+    /// (e)) when it fits the box, else as one bold line — with `≈` before it
+    /// when the fit is nearest; the spoken form under it; the fit detail
+    /// under that. Declined: `—` and the reason.
     fn headline_box(&mut self, box_: Rect, frame: &Frame) {
         let inner_x = box_.x + 1;
         let inner_w = box_.width - 2;
-        let name_y = box_.y + 2;
         let name = match frame.headline.as_ref() {
             Some(headline) => match &headline.approximation {
                 Some(mark) => format!("{mark} {}", headline.name),
@@ -532,7 +573,22 @@ impl Canvas<'_> {
             },
             None => ABSENT.to_string(),
         };
-        self.put_centered(inner_x, name_y, inner_w, &name, lime_bold());
+        let as_figure = frame.headline.is_some()
+            && figure::missing(&name).is_empty()
+            && figure::width(&name) <= inner_w as usize;
+        let mut y = box_.y + 1;
+        if as_figure {
+            let lines = figure::short(&name, lime_bold());
+            let rect = Rect::new(inner_x, y, inner_w, figure::SHORT_HEIGHT);
+            Paragraph::new(lines)
+                .alignment(Alignment::Center)
+                .render(rect, self.buf);
+            y += figure::SHORT_HEIGHT + 1;
+        } else {
+            y += 1;
+            self.put_centered(inner_x, y, inner_w, &name, lime_bold());
+            y += 1;
+        }
 
         let below: Vec<(String, Style)> = match frame.headline.as_ref() {
             Some(headline) => {
@@ -551,14 +607,15 @@ impl Canvas<'_> {
             },
         };
         let last_y = box_.y + box_.height;
-        for (y, (text, style)) in (name_y + 1..last_y).zip(below) {
+        for (y, (text, style)) in (y..last_y).zip(below) {
             self.put_centered(inner_x, y, inner_w, &text, style);
         }
     }
 
-    /// The staff: five lines a clef as rules, `●` heads with their
-    /// accidental before them, short ledger lines under heads off the staff.
-    /// Treble alone unless the box has room for both clefs and a row between.
+    /// The staff: five lines a clef as rules, `■` heads with their accidental
+    /// in the cell to their left, short ledger lines under heads off the
+    /// staff. Treble alone unless the box has room for both clefs and a row
+    /// between; the two staves sit tight, with the spare rows above and below.
     fn staff_box(&mut self, box_: Rect, frame: &Frame) {
         let notes = &frame.annotations.staff;
         if box_.height < BOTH_CLEFS_FROM {
@@ -567,33 +624,31 @@ impl Canvas<'_> {
             return;
         }
         // Each clef asks for the rows its window needs; a low bass note asks
-        // for more than nine. Spare rows split evenly; a shortfall comes off
-        // the taller of the two first, never below nine.
-        let need_t = window_rows(notes, Clef::Treble);
-        let need_b = window_rows(notes, Clef::Bass);
-        let total = box_.height;
-        let treble_rows = if need_t + need_b < total {
-            need_t + (total - need_t - need_b - 1) / 2
-        } else {
-            let (mut t, mut b) = (need_t, need_b);
-            while t + b + 1 > total {
-                if b >= t && b > STAFF_ROWS {
-                    b -= 1;
-                } else if t > STAFF_ROWS {
-                    t -= 1;
-                } else {
-                    break;
-                }
+        // for more than nine. A shortfall comes off the taller of the two
+        // first, never below nine.
+        let (mut t, mut b) = (
+            window_rows(notes, Clef::Treble),
+            window_rows(notes, Clef::Bass),
+        );
+        while t + b + 1 > box_.height {
+            if b >= t && b > STAFF_ROWS {
+                b -= 1;
+            } else if t > STAFF_ROWS {
+                t -= 1;
+            } else {
+                break;
             }
-            t
-        };
+        }
+        let block = t + 1 + b;
+        let top = box_.y + box_.height.saturating_sub(block) / 2;
         let treble = Rect {
-            height: treble_rows,
+            y: top,
+            height: t,
             ..box_
         };
         let bass = Rect {
-            y: box_.y + treble_rows + 1,
-            height: box_.height - treble_rows - 1,
+            y: top + t + 1,
+            height: b,
             ..box_
         };
         self.staff(treble, Clef::Treble, notes);
@@ -603,7 +658,8 @@ impl Canvas<'_> {
     /// One clef in `box_`. Rows 0..=8 are the staff; the window widens for
     /// ledger notes when there is room. When there is not, the empty edges
     /// of the staff give way first, then the ledger note farthest from the
-    /// staff.
+    /// staff. Heads stack on one column; an accidental sits in the cell to
+    /// the left and never moves the head.
     fn staff(&mut self, box_: Rect, clef: Clef, notes: &[StaffNote]) {
         let notes: Vec<&StaffNote> = notes.iter().filter(|n| n.clef == clef).collect();
         let rows = box_.height as i32;
@@ -637,6 +693,7 @@ impl Canvas<'_> {
         let slack = rows - (top - bottom + 1);
         let y_top = box_.y as i32 + slack / 2;
         let line_x = box_.x + STAFF_LINE_X;
+        let head_x = line_x + STAFF_LINE_WIDTH / 2;
         let line: String = "─".repeat(STAFF_LINE_WIDTH as usize);
         for row in (bottom..=top).rev() {
             let y = (y_top + (top - row)) as u16;
@@ -648,21 +705,20 @@ impl Canvas<'_> {
             if heads.is_empty() {
                 continue;
             }
-            // Lowest first, side by side, centred on the staff.
-            let width: usize = heads
-                .iter()
-                .map(|n| n.spelled.accidental.symbol().width() + 1)
-                .sum::<usize>()
-                + heads.len().saturating_sub(1);
-            let mut x = line_x + (STAFF_LINE_WIDTH as usize).saturating_sub(width) as u16 / 2;
+            // Lowest first. The first head sits on the head column; a second
+            // head on the same row (D3 beside D#3) sits two cells right, so
+            // each keeps the cell to its left for its accidental.
             if !on_staff && row % 2 == 0 {
-                // A ledger line under the heads only.
-                let ledger: String = "─".repeat(width + 2);
-                self.put(x.saturating_sub(1), y, &ledger, ink());
+                let ledger: String = "─".repeat(2 * heads.len() + 1);
+                self.put(head_x - 1, y, &ledger, ink());
             }
-            for head in heads {
-                let glyph = format!("{}{DOT}", head.spelled.accidental.symbol());
-                x += self.put(x, y, &glyph, bold()).width + 1;
+            for (index, head) in heads.iter().enumerate() {
+                let x = head_x + 2 * index as u16;
+                let accidental = head.spelled.accidental.symbol();
+                if !accidental.is_empty() {
+                    self.put(x - 1, y, accidental, bold());
+                }
+                self.put(x, y, SQUARE, bold());
             }
         }
     }
@@ -681,22 +737,35 @@ impl Canvas<'_> {
         let x = right.x;
         let w = right.width;
         let mut y = right.y;
-        let (read_rows, hist_rows, note_rows) = allocate(
+        let layout = allocate(
             right.height,
             frame.readings().len(),
             frame.history.len(),
             frame.notes.len(),
         );
+        let mut rules = layout.rules;
+        let mut rule_if_any = |canvas: &mut Self, y: &mut u16| {
+            if rules > 0 {
+                canvas.rule(x, *y, w);
+                *y += 1;
+                rules -= 1;
+            }
+        };
 
-        // KEY / FUNCTION / NUMERAL / KEYS.
-        self.hint_label(x + COL_LABEL, y, HintLabel::lime("KEY", "[K][M]").colon());
+        // KEY, on the fill like a section header; then FUNCTION, NUMERAL, KEYS.
+        self.fill_row(x, y, w, on_fill());
+        self.hint_label(
+            x + COL_LABEL,
+            y,
+            HintLabel::lime("KEY", "[K][M]").colon().on_fill(),
+        );
         let key = frame.key_context.as_ref().map(|k| k.label().to_uppercase());
         self.put_cut(
             x + COL_VALUE,
             y,
             or_absent(key.as_deref()),
             w - COL_VALUE,
-            ink(),
+            on_fill(),
         );
         y += 1;
         self.put(x + COL_LABEL, y, "FUNCTION:", bold());
@@ -727,9 +796,12 @@ impl Canvas<'_> {
             on_fill(),
         );
         y += 1;
+        rule_if_any(self, &mut y);
 
-        y = self.readings(x, y, w, read_rows, frame, ui, hits);
-        y = self.history(x, y, w, hist_rows, frame);
+        y = self.readings(x, y, w, layout.readings, frame, ui, hits);
+        rule_if_any(self, &mut y);
+        y = self.history(x, y, w, layout.history, frame);
+        rule_if_any(self, &mut y);
 
         // NOTES.
         self.section_header(x, y, w, "NOTES", PINK);
@@ -739,7 +811,7 @@ impl Canvas<'_> {
         self.put(x + COL_LABEL, y, "CHORD", dim_bold());
         self.put(x + COL_VALUE, y, "NOTE", dim_bold());
         y += 1;
-        self.notes(Rect::new(x, y, w, note_rows as u16), frame, ui, hits);
+        self.notes(Rect::new(x, y, w, layout.notes as u16), frame, ui, hits);
 
         cursor
     }
@@ -811,27 +883,34 @@ impl Canvas<'_> {
         from + rows as u16
     }
 
-    /// The HISTORY header, heads and rows, newest last. The window ends at
-    /// the newest entry, unless the display is stepped to an older one that
-    /// must stay in view; the stepped row is filled. Returns the row after.
+    /// The HISTORY header, heads and rows, newest last. With room for it,
+    /// a blank row separates entries so their chips do not touch; spacing
+    /// comes before showing every entry. The window
+    /// ends at the newest entry, unless the display is stepped to an older
+    /// one that must stay in view; the stepped row is filled. Returns the
+    /// row after the block.
     fn history(&mut self, x: u16, y: u16, w: u16, rows: usize, frame: &Frame) -> u16 {
         let [_, _, _, col_numeral, col_function] = columns(w);
         self.section_header(x, y, w, "HISTORY", MAGENTA);
         self.table_heads(x, y + 1, w, ["NAME", "KEYS", "", "NUMERAL", "FUNCTION"]);
         let from = y + 2;
         let total = frame.history.len();
+        // Space the entries whenever two spaced entries fit; at the 24-row
+        // minimum there is one row, so one entry.
+        let pitch = if rows >= 3 { 2 } else { 1 };
+        let visible = rows.div_ceil(pitch).min(total);
         let end = match frame.history_step {
-            Some(step) => step.index.max(rows).min(total),
+            Some(step) => step.index.max(visible).min(total),
             None => total,
         };
-        let start = end.saturating_sub(rows);
+        let start = end.saturating_sub(visible);
         let shown = frame
             .history
             .iter()
             .enumerate()
             .skip(start)
             .take(end - start);
-        for (row_y, (index, entry)) in (from..).zip(shown) {
+        for (row_y, (index, entry)) in (from..).step_by(pitch).zip(shown) {
             let stepped = frame.history_step.is_some_and(|s| s.index == index + 1);
             let (text, chip) = if stepped {
                 self.fill_row(x, row_y, w, on_fill());
@@ -985,9 +1064,7 @@ impl Canvas<'_> {
         }
         hits.scroll_areas.push((list, ScrollTarget::Notes));
     }
-}
 
-impl Canvas<'_> {
     // MARK: All Notes
 
     /// Every note, grouped under its chord, in the packed chrome: the NOTES
@@ -1202,6 +1279,7 @@ struct HintLabel<'a> {
     colon: bool,
     style: Style,
     keys_style: Style,
+    colon_style: Style,
 }
 
 impl<'a> HintLabel<'a> {
@@ -1212,6 +1290,7 @@ impl<'a> HintLabel<'a> {
             colon: false,
             style: lime_bold(),
             keys_style: dim_bold(),
+            colon_style: bold(),
         }
     }
 
@@ -1229,6 +1308,7 @@ impl<'a> HintLabel<'a> {
                 .fg(DIM.color())
                 .bg(LIME.color())
                 .add_modifier(Modifier::BOLD),
+            colon_style: on_lime().add_modifier(Modifier::BOLD),
             ..Self::lime(word, keys)
         }
     }
@@ -1249,6 +1329,16 @@ impl<'a> HintLabel<'a> {
             ..self
         }
     }
+
+    /// The same label on the `#1E1E1E` fill.
+    fn on_fill(self) -> Self {
+        HintLabel {
+            style: lime_on_fill_bold(),
+            keys_style: dim_on_fill().add_modifier(Modifier::BOLD),
+            colon_style: on_fill_bold(),
+            ..self
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1256,22 +1346,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn at_24_rows_the_lists_get_their_minimums() {
+    fn at_24_rows_the_lists_get_their_minimums_and_no_rules() {
         // 18 body rows: 11 fixed, 7 variable, all spoken for by the minimums.
-        assert_eq!(allocate(18, 3, 9, 3), (2, 1, 4));
+        assert_eq!(
+            allocate(18, 3, 9, 3),
+            Layout {
+                rules: 0,
+                readings: 2,
+                history: 1,
+                notes: 4
+            }
+        );
     }
 
     #[test]
-    fn spare_rows_go_to_readings_then_notes_then_history_then_notes_again() {
-        // 20 body rows: two spare. Three readings want one more; three
-        // notes are already covered; the other goes to history.
-        assert_eq!(allocate(20, 3, 9, 3), (3, 2, 4));
-        // 34 body rows: sixteen spare. Readings take one, notes take two
-        // (six notes), history takes eight (nine entries), notes take the
-        // remaining five.
-        assert_eq!(allocate(34, 3, 9, 6), (3, 9, 11));
+    fn spare_rows_go_to_rules_readings_notes_history_then_notes_again() {
+        // 21 body rows: three spare, all three rules.
+        assert_eq!(
+            allocate(21, 3, 9, 3),
+            Layout {
+                rules: 3,
+                readings: 2,
+                history: 1,
+                notes: 4
+            }
+        );
+        // 40 body rows: 22 spare. Rules 3, readings 1, notes 2 (six notes),
+        // history 16 (nine entries spaced: 17 rows), leaving 0.
+        assert_eq!(
+            allocate(40, 3, 9, 6),
+            Layout {
+                rules: 3,
+                readings: 3,
+                history: 17,
+                notes: 6
+            }
+        );
         // Nothing to show: every spare row still goes somewhere.
-        assert_eq!(allocate(30, 0, 0, 0), (2, 1, 16));
+        assert_eq!(
+            allocate(30, 0, 0, 0),
+            Layout {
+                rules: 3,
+                readings: 2,
+                history: 1,
+                notes: 13
+            }
+        );
     }
 
     #[test]
@@ -1290,9 +1410,11 @@ mod tests {
     }
 
     #[test]
-    fn the_grid_hangs_numeral_and_function_off_the_right_edge() {
+    fn the_grid_widens_fit_with_the_terminal_up_to_a_cap() {
         assert_eq!(columns(51), [0, 12, 23, 32, 40]);
-        // A wider panel widens FIT; the two right columns keep their widths.
-        assert_eq!(columns(91), [0, 12, 23, 72, 80]);
+        // A wider panel widens FIT; the two right columns follow it.
+        assert_eq!(columns(61), [0, 12, 23, 42, 50]);
+        // Past the cap the rest goes to FUNCTION on the right.
+        assert_eq!(columns(120), [0, 12, 23, 49, 57]);
     }
 }
