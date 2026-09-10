@@ -84,6 +84,35 @@ current key; all three default when absent, so an older JSON line still
 parses. `AppModel::toggle_arpeggio` is the sostenuto pedal's flip, callable
 from a key.
 
+## Amended 2026-09-09 — one renderer, two columns, a fine figure
+
+Michael reviewed the skin in macOS Terminal beside cmux the same day and
+changed four things. Each supersedes the matching line above.
+
+- **Text only.** The picture path is gone (see the departures list). One
+  renderer draws the same screen in every terminal.
+- **Two columns, not the frame's narrow panel.** The left three quarters
+  hold the title over a rule, then the KEY rows, READINGS, HISTORY and NOTES
+  on one grid. The right quarter is the staff, full height, with its divider
+  running from the top border to the foot rule. The frame's 80×24 is still
+  the floor, but the skin no longer draws the frame cell for cell.
+- **Blank rows divide sections.** The underline border went; it drew at a
+  different height and weight in every terminal, ran through the chips, and
+  could not take a colour. One blank row between sections instead, and
+  nothing on screen is underlined. At 80×24 the lists sit at their floor:
+  three readings, one history entry, no note rows.
+- **The headline heads the staff column,** name over spoken form, no rule
+  under it. The name draws as a fine figure (`fine.rs`) where it fits: ten-row
+  bitmaps on a half-block grid, folded into `▀ ▄ █`, five terminal rows at
+  scale 1 and a whole-number scale for a larger window. Where no scale fits
+  the column — any name over three glyphs at 80 columns — the plain lime line
+  draws. The figure is text, so every terminal draws it; octants would give
+  square pixels but macOS Terminal is not proven to draw them, and the app
+  cannot ask. PUSH keeps its full-cell figure.
+
+The snapshots under `tests/snapshots/packed-*.txt` were re-recorded for the
+new layout and stay the gate.
+
 ## Consequences
 
 - Three skins share one `Frame`, one `Hits`, one event loop. A field added to
