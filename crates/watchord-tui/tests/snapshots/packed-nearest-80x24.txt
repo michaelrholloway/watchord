@@ -1,24 +1,24 @@
 ┌──────────────────────────────────────────────────────────┬───────────────────┐
-│ WATCHORD                                                 │    ──────────     │
-│ ≈ Cm7/E                                                  │                   │
-│ C MINOR 7                                                │    ──────────     │
-├──────────────────────────────────────────────────────────┤         ■         │
-│KEY[K][M]:  —                                             │    ──────────     │
-│FUNCTION:   —                                             │                   │
-│NUMERAL:    —                                             │    ──────────     │
-│KEYS:       E3   C4   A#4   D5   A5                       │                   │
-│                                                          │    ─────■────     │
-│READINGS                                                ■ │                   │
+│ WATCHORD                                                 │ ≈ Cm7/E           │
+├──────────────────────────────────────────────────────────┤ C MINOR 7         │
+│KEY[K][M]:  —                                             │                   │
+│FUNCTION:   —                                             │        ───        │
+│NUMERAL:    —                                             │                   │
+│KEYS:       E3   C4   A#4   D5   A5                       │        ───        │
+│                                                          │         ■         │
+│READINGS                                                ■ │        ───        │
 │NAME        ORIGIN     FIT             NUMERAL FUNCTION   │                   │
-│≈ Cm7/E     HEADLINE   NEAREST         —       —          │    ──────────     │
-│                                                          │                   │
-│HISTORY                                                 ■ │    ──────────     │
-│NAME        KEYS                       NUMERAL FUNCTION   │                   │
-│Cm7/E       E3   C4   A#4   D5   A5    —       —          │    ──────────     │
-│                                                          │                   │
-│NOTES                                                   ■ │    ──────────     │
-│ add a note...                         SAVE[⏎] VIEW ALL[N]│                   │
-│CHORD       NOTE                                          │    ──────────     │
+│≈ Cm7/E     HEADLINE   NEAREST         —       —          │        #■─        │
+│C13/E       REROOTED   MISSING ·no5 ·… —       —          │                   │
+│                                                          │    ──────────     │
+│HISTORY                                                 ■ │                   │
+│NAME        KEYS                       NUMERAL FUNCTION   │    ──────────     │
+│Cm7/E       E3   C4   A#4   D5   A5    —       —          │         ■         │
+│                                                          │    ──────────     │
+│NOTES                                                   ■ │                   │
+│ add a note...                         SAVE[⏎] VIEW ALL[N]│    ──────────     │
+│CHORD       NOTE                                          │                   │
+│                                                          │    ─────■────     │
 ├──────────────────────────────────────────────────────────┴───────────────────┤
 │ SUSTAIN: OFF ●    ARPEGGIO[A]: OFF ●    STATE: PLAYING ●      INPUT[I]: NONE │
 └──────────────────────────────────────────────────────────────────────────────┘

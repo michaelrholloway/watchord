@@ -2,12 +2,14 @@
 //! growing into a larger terminal (spec #20, ADR-0006).
 //!
 //! One outer box and a foot. The body is two columns: the left three
-//! quarters hold the title, the headline over a rule, then on one column
-//! grid the KEY, FUNCTION, NUMERAL and KEYS rows, the READINGS table, the
-//! HISTORY table and the NOTES section with the field and the saved notes.
-//! The right quarter is the staff, full height. Section headers are rows
-//! filled `#1E1E1E`; one blank row divides two sections (the layout Michael
-//! asked for on 2026-09-09, over the frame's narrow left panel).
+//! quarters hold the title over a rule, then on one column grid the KEY,
+//! FUNCTION, NUMERAL and KEYS rows, the READINGS table, the HISTORY table
+//! and the NOTES section with the field and the saved notes. The right
+//! quarter holds the headline — the name over the spoken form — at the top
+//! and the staff under it, full height, no rule between. Section headers
+//! are rows filled `#1E1E1E`; one blank row divides two sections (the
+//! layout Michael asked for on 2026-09-09, over the frame's narrow left
+//! panel).
 //!
 //! What the frame carries and the skin does not draw stays in the frame:
 //! drill, settle, the sostenuto and soft pedals, score, root, claimed,
@@ -114,8 +116,9 @@ const TOO_SMALL: &str = "watchord needs 80×24";
 /// The staff column's share of the inner width: the right quarter. The
 /// headline and every table take the rest, at the left.
 const STAFF_SHARE: u16 = 4;
-/// The headline's rows over the tables: the name, then the spoken form with
-/// the fit detail after it. A rule closes the box under them.
+/// The headline's rows at the top of the staff column: the name, then the
+/// spoken form with the fit detail after it. A blank row follows, then the
+/// staff.
 const HEADLINE_ROWS: u16 = 2;
 /// A five-line staff: nine rows, one per position — a line on each even
 /// row, a space on each odd row — so every head sits exactly on its line or
@@ -255,7 +258,7 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
 
     canvas.frame_box(Some(divider_x));
 
-    // Title, at the head of the left column.
+    // Title, over a rule across the left column.
     canvas.put(
         x0 + 2,
         y0 + 1,
@@ -271,23 +274,30 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
             dim_bold(),
         );
     }
+    canvas.rule(x0 + 1, y0 + 2, divider_x - x0 - 1);
 
-    // Body: the left column holds the headline over the tables; the staff
-    // column at the right takes the full height, title row included.
+    // Body: the left column holds the tables under the rule; the staff
+    // column at the right holds the headline at the top, then the staff.
     let body_bottom = y1 - 3; // inclusive
-    let left = Rect {
+    let sections = Rect {
         x: x0 + 1,
-        y: y0 + 2,
+        y: y0 + 3,
         width: divider_x - x0 - 1,
-        height: body_bottom - y0 - 1,
+        height: body_bottom - y0 - 2,
     };
-    let staff = Rect {
+    let headline = Rect {
         x: divider_x + 1,
         y: y0 + 1,
         width: x1 - divider_x - 1,
-        height: body_bottom - y0,
+        height: HEADLINE_ROWS,
     };
-    let cursor = canvas.left_column(left, frame, ui, &mut hits);
+    let staff = Rect {
+        y: y0 + 1 + HEADLINE_ROWS + 1,
+        height: body_bottom - y0 - HEADLINE_ROWS - 1,
+        ..headline
+    };
+    let cursor = canvas.sections(sections, frame, ui, &mut hits);
+    canvas.headline_box(headline, frame);
     canvas.staff_box(staff, frame);
 
     // Foot.
@@ -517,36 +527,12 @@ impl Canvas<'_> {
         self.put_cut(cursor, y, &input_text, right.saturating_sub(cursor), ink());
     }
 
-    // MARK: Left column
+    // MARK: Staff column
 
-    /// The headline over a rule, then the four field rows, the two tables
-    /// and the notes section, a blank row between sections. Returns the
-    /// cursor position in the note field.
-    fn left_column(
-        &mut self,
-        left: Rect,
-        frame: &Frame,
-        ui: &UiState,
-        hits: &mut Hits,
-    ) -> Option<(u16, u16)> {
-        let headline = Rect {
-            height: HEADLINE_ROWS,
-            ..left
-        };
-        self.headline_box(headline, frame);
-        let rule_y = left.y + HEADLINE_ROWS;
-        self.rule(left.x, rule_y, left.width);
-        let sections = Rect {
-            y: rule_y + 1,
-            height: left.height - HEADLINE_ROWS - 1,
-            ..left
-        };
-        self.sections(sections, frame, ui, hits)
-    }
-
-    /// The name in lime, one bold line, with `≈` before it when the fit is
-    /// nearest; under it the spoken form, then the fit detail dim after two
-    /// spaces. Declined: `—` and the reason.
+    /// At the top of the staff column: the name in lime, one bold line,
+    /// with `≈` before it when the fit is nearest; under it the spoken form,
+    /// then the fit detail dim after two spaces. Declined: `—` and the
+    /// reason. Long text is cut to the column.
     fn headline_box(&mut self, box_: Rect, frame: &Frame) {
         let x = box_.x + 1;
         let w = box_.width - 2;
@@ -1294,12 +1280,13 @@ mod tests {
 
     #[test]
     fn at_24_rows_the_lists_get_their_minimums() {
-        // 16 section rows at 80×24: 14 fixed, 2 variable, one reading and
-        // one history entry; a note row comes with the 25th terminal row.
+        // 18 section rows at 80×24: 14 fixed, 4 variable — the readings
+        // take three, history one, and a note row comes with the 25th
+        // terminal row.
         assert_eq!(
-            allocate(16, 3, 9, 3),
+            allocate(18, 3, 9, 3),
             Layout {
-                readings: 1,
+                readings: 3,
                 history: 1,
                 notes: 0
             }

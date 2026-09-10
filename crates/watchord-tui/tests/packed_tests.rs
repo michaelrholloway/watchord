@@ -254,33 +254,50 @@ fn now_playing_at_80x24_draws_the_design() {
     assert_words(&text, &CHROME, &[], "packed 80x24 chrome");
     assert_eq!(rows.len(), 24);
     assert!(rows.iter().all(|r| r.chars().count() <= 80));
-    // At 24 rows the lists are at their floor: one reading, one history
-    // entry, no note rows. The field and VIEW ALL are still there.
+    // At 24 rows the three readings fit; history holds one entry and no
+    // note row draws. The field and VIEW ALL are still there.
+    assert_words(
+        &text,
+        &["Am7", "REROOTED", "CΔ6", "ENHARMONIC"],
+        &[],
+        "packed 80x24 readings",
+    );
     assert!(hits.note_rows.is_empty());
     assert!(hits.field.is_some());
     assert_eq!(hits.tabs.len(), 1);
     assert_eq!(hits.tabs[0].1, Screen::AllNotes);
     // Nothing is selected, so no DEL cell is drawn.
     assert!(hits.delete_cells.is_empty());
-    // The title heads the left column; the headline is right under it; the
-    // rule under the headline meets the staff column's divider.
+    // The title heads the left column over a rule that meets the staff
+    // column's divider; KEY sits right under the rule.
     assert!(rows[1].starts_with("│ WATCHORD"), "{}", rows[1]);
-    assert!(rows[2].starts_with("│ C6 "), "{}", rows[2]);
-    assert!(rows[3].starts_with("│ C MAJOR 6"), "{}", rows[3]);
     assert!(
-        rows[4].starts_with("├───") && rows[4].contains("┤"),
+        rows[2].starts_with("├───") && rows[2].contains("┤"),
         "{}",
-        rows[4]
+        rows[2]
     );
     assert!(
-        rows[5].starts_with("│KEY"),
+        rows[3].starts_with("│KEY"),
         "KEY sits right under the rule\n{text}"
     );
     // The staff column: the divider runs from the top border to the foot
-    // rule, and staff lines sit right of it.
+    // rule; the headline sits at its top, name over spoken form, with no
+    // rule under it.
     assert!(rows[0].contains('┬'), "{}", rows[0]);
     assert!(rows[21].contains('┴'), "{}", rows[21]);
-    assert!(rows[1].chars().nth(59) == Some('│'), "{}", rows[1]);
+    let staff_column = |y: usize| -> String { rows[y].chars().skip(60).collect() };
+    assert!(staff_column(1).starts_with(" C6 "), "{}", rows[1]);
+    assert!(staff_column(2).starts_with(" C MAJOR 6"), "{}", rows[2]);
+    assert!(
+        staff_column(3).trim_matches('│').trim().is_empty(),
+        "{}",
+        rows[3]
+    );
+    assert!(
+        !rows[3].contains('┤'),
+        "no rule under the headline\n{}",
+        rows[3]
+    );
     assert_snapshot("packed-now-playing-80x24", &rows);
 
     // Four rows taller, the three readings and both notes fit.
@@ -358,12 +375,12 @@ fn both_clefs_draw_when_the_box_has_room_and_treble_alone_below() {
     assert!(bass_notes > 0, "the fixture must have a bass note");
     let heads_at = |height: u16| {
         let (rows, _) = render(&frame, &UiState::default(), 80, height);
-        // The staff column: right of the divider at x 59, title row to the
-        // row above the foot rule.
+        // The staff column: right of the divider at x 59, under the two
+        // headline rows, down to the row above the foot rule.
         let staff: String = rows
             .iter()
-            .skip(1)
-            .take(height as usize - 4)
+            .skip(3)
+            .take(height as usize - 6)
             .map(|r| r.chars().skip(60).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n");
