@@ -30,5 +30,5 @@
 │C7#9        two hands, sustain down ⏎ lean into the #9 on…│                   │
 │C7#9        the Hendrix voicing, low and wide             │        ─■─        │
 ├──────────────────────────────────────────────────────────┴───────────────────┤
-│ SUSTAIN: ON ●    ARPEGGIO[A]: ON ●    STATE: PLAYING ●        INPUT[I]: FAKE │
+│ SUSTAIN: ON ●               STATE: PLAYING ●                  INPUT[I]: FAKE │
 └──────────────────────────────────────────────────────────────────────────────┘

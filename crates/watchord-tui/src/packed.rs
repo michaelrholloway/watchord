@@ -119,10 +119,10 @@ const TOO_SMALL: &str = "watchord needs 80×24";
 /// headline and every table take the rest, at the left.
 const STAFF_SHARE: u16 = 4;
 /// How the headline draws at the top of the staff column: a blank row, the
-/// name as a fine figure at `scale` or as one line when no scale fits, a
+/// name as a fine figure at `scale` or as one line when it does not fit, a
 /// blank row, then the spoken form with the fit detail after it. All
-/// centred. `rows` is the block's height; a blank row follows, then the
-/// staff.
+/// centred. `rows` is the block's height, fixed by the column; a blank row
+/// follows, then the staff.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct HeadlinePlan {
     scale: Option<u16>,
@@ -141,23 +141,37 @@ fn headline_name(frame: &Frame) -> String {
     }
 }
 
-/// The largest figure that fits the staff column, leaving the staff its
-/// nine rows and a blank row; one text line when none does, or when there
-/// is no chord to draw.
-fn plan_headline(frame: &Frame, column: Rect) -> HeadlinePlan {
-    let name = headline_name(frame);
+/// A name four glyphs long. The column's figure scale is chosen so this
+/// fits, so the block's height is a fact about the column and not about
+/// the chord: the layout never jumps between chords.
+const SCALE_REFERENCE: &str = "C7#9";
+
+/// The figure scale the column supports — the largest at which a four-glyph
+/// name fits its width and the staff keeps nine rows and a blank. `None`
+/// when not even scale 1 fits: then every name is one text line.
+fn column_scale(column: Rect) -> Option<u16> {
     // A blank row above the name, one between name and spoken form, the
     // spoken row, a blank, then the staff's nine rows.
     let figure_rows = column.height.saturating_sub(3 + 1 + STAFF_ROWS);
-    let scale = match frame.headline {
-        Some(_) => fine::scale_to_fit(&name, column.width.saturating_sub(2), figure_rows),
-        None => None,
-    };
-    HeadlinePlan {
-        scale,
-        rows: 1 + scale.map_or(1, fine::height) + 1 + 1,
-    }
+    fine::scale_to_fit(SCALE_REFERENCE, column.width.saturating_sub(2), figure_rows)
 }
+
+/// The headline at the column's scale when the name fits at it, else one
+/// text line in the same block — the block's height never moves. No chord
+/// draws as a line too.
+fn plan_headline(frame: &Frame, column: Rect) -> HeadlinePlan {
+    let column_scale = column_scale(column);
+    let rows = 1 + column_scale.map_or(1, fine::height) + 1 + 1;
+    let name = headline_name(frame);
+    let scale = match (frame.headline.as_ref(), column_scale) {
+        (Some(_), Some(scale)) if fine::width(&name, scale) <= column.width.saturating_sub(2) => {
+            Some(scale)
+        }
+        _ => None,
+    };
+    HeadlinePlan { scale, rows }
+}
+
 /// A five-line staff: nine rows, one per position — a line on each even
 /// row, a space on each odd row — so every head sits exactly on its line or
 /// in its space. Text alone, so every terminal draws the same staff.
@@ -536,31 +550,28 @@ impl Canvas<'_> {
         }
     }
 
-    /// The foot: SUSTAIN, ARPEGGIO, STATE and INPUT, each with its dot,
-    /// spread across the row. A status message, when the model has one,
-    /// takes the row.
+    /// The foot: SUSTAIN, STATE and INPUT, each with its dot, spread across
+    /// the row. A status message, when the model has one, takes the row.
+    /// ARPEGGIO left the foot on 2026-09-10: Michael saw no use for the mode
+    /// while playing, so this skin binds no key to it (the model keeps it).
     fn foot(&mut self, x: u16, y: u16, right: u16, frame: &Frame) {
         if let Some(status) = frame.status.as_deref() {
             self.put_cut(x, y, status, right - x, ink());
             return;
         }
         let width = right - x;
-        // Four groups; the first sits at the left edge, the last ends at the
-        // right edge, the middle two spread evenly.
+        // Three groups; the first sits at the left edge, the last ends at the
+        // right edge, the middle one halfway between.
         let sustain_w = "SUSTAIN: OFF ●".width() as u16;
-        let arpeggio_w = "ARPEGGIO[A]: OFF ●".width() as u16;
         let state_w = "STATE: RELEASED ●".width() as u16;
         let input_text = input_word(frame);
         let input_w = ("INPUT[I]: ".width() + input_text.width()) as u16;
-        let used = sustain_w + arpeggio_w + state_w + input_w;
-        let gap = width.saturating_sub(used) / 3;
+        let used = sustain_w + state_w + input_w;
+        let gap = width.saturating_sub(used) / 2;
 
         let mut cursor = x;
         cursor += self.put(cursor, y, "SUSTAIN:", ink()).width + 1;
         cursor += self.on_off(cursor, y, frame.sustain);
-        cursor += gap;
-        cursor += self.hint_label(cursor, y, HintLabel::lime("ARPEGGIO", "[A]").colon()) + 1;
-        cursor += self.on_off(cursor, y, frame.arpeggio);
         cursor += gap;
         cursor += self.put(cursor, y, "STATE:", bold()).width + 1;
         let (state_word, playing) = match frame.state {
@@ -595,7 +606,10 @@ impl Canvas<'_> {
                 }
             }
             None => {
-                self.put_centered(x, box_.y + 1, w, &cut(&name, w as usize), lime_bold());
+                // Centred in the rows the figure would take.
+                let figure_rows = plan.rows - 3;
+                let y = box_.y + 1 + figure_rows / 2;
+                self.put_centered(x, y, w, &cut(&name, w as usize), lime_bold());
             }
         }
         let y = box_.y + plan.rows - 1;
@@ -801,7 +815,12 @@ impl Canvas<'_> {
         self.put(x + COL_LABEL, y, "CHORD", dim_bold());
         self.put(x + COL_VALUE, y, "NOTE", dim_bold());
         y += 1;
-        self.notes(Rect::new(x, y, w, layout.notes as u16), frame, ui, hits);
+        let list = Rect::new(x, y, w, layout.notes as u16);
+        if ui.input_picker_open {
+            self.input_picker(list, frame, ui);
+        } else {
+            self.notes(list, frame, ui, hits);
+        }
 
         cursor
     }
@@ -1000,6 +1019,47 @@ impl Canvas<'_> {
         hits.tabs
             .push((Rect::new(start, y, cursor_x - start, 1), Screen::AllNotes));
         cursor
+    }
+
+    /// The input picker, in the notes list's rows while it is open: a filled
+    /// row with the keys, then `All inputs` and one row per device, the
+    /// highlighted row black on lime. `i` opens and closes it (ticket #13);
+    /// row 0 is `All inputs`, the way back from a narrowed filter (#18).
+    /// The other skins draw it in their own place; this one had none until
+    /// 2026-09-10, so `i` opened a picker nobody could see.
+    fn input_picker(&mut self, list: Rect, frame: &Frame, ui: &UiState) {
+        let (x, w) = (list.x, list.width);
+        let mut y = list.y;
+        let end = list.y + list.height;
+        if y >= end {
+            return;
+        }
+        self.fill_row(x, y, w, on_fill());
+        self.put(x + COL_LABEL, y, "INPUT", on_fill_bold());
+        self.put_cut(
+            x + COL_VALUE,
+            y,
+            "↑↓ choose · ⏎ select · esc close",
+            w.saturating_sub(COL_VALUE),
+            dim_on_fill(),
+        );
+        y += 1;
+        let rows = std::iter::once("All inputs".to_string())
+            .chain(frame.inputs.iter().cloned())
+            .enumerate();
+        for (index, name) in rows {
+            if y >= end {
+                break;
+            }
+            let style = if index == ui.input_picker_index {
+                self.fill_row(x, y, w, on_lime());
+                on_lime()
+            } else {
+                ink()
+            };
+            self.put_cut(x + COL_VALUE, y, &name, w.saturating_sub(COL_VALUE), style);
+            y += 1;
+        }
     }
 
     /// The saved notes on this chord, newest first, one row each: the name

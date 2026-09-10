@@ -1,30 +1,30 @@
 ┌──────────────────────────────────────────────────────────┬───────────────────┐
 │ WATCHORD                                    HISTORY 7/64 │                   │
-├──────────────────────────────────────────────────────────┤ █▀▀▀▄       ▄▀▀▄  │
-│KEY[K][M]:  C MAJOR                                       │ █   █ ▄▄ ▄  █  █  │
-│FUNCTION:   SUBDOMINANT                                   │ █   █ █ █ █  ▀▀█  │
-│NUMERAL:    iim9                                          │ █   █ █ █ █    █  │
-│KEYS:       D2   F2   A2   C3   E3                        │ █▄▄▄▀ █ █ █ ▀▄▄▀  │
+├──────────────────────────────────────────────────────────┤        Dm9        │
+│KEY[K][M]:  C MAJOR                                       │                   │
+│FUNCTION:   SUBDOMINANT                                   │     D MINOR 9     │
+│NUMERAL:    iim9                                          │                   │
+│KEYS:       D2   F2   A2   C3   E3                        │    ──────────     │
 │                                                          │                   │
-│READINGS                                                ■ │     D MINOR 9     │
+│READINGS                                                ■ │    ──────────     │
 │NAME        ORIGIN     FIT             NUMERAL FUNCTION   │                   │
-│Dm9         HEADLINE   EXACT           iim9    subdominant│                   │
+│Dm9         HEADLINE   EXACT           iim9    subdominant│    ──────────     │
 │                                                          │                   │
-│HISTORY                                                 ■ │                   │
-│NAME        KEYS                       NUMERAL FUNCTION   │    ──────────     │
-│Am7         A2   C3   E3   G3          vim7    tonic      │                   │
-│Dm7         D3   F3   A3   C4          iim7    subdominant│    ──────────     │
+│HISTORY                                                 ■ │    ─────■────     │
+│NAME        KEYS                       NUMERAL FUNCTION   │                   │
+│Am7         A2   C3   E3   G3          vim7    tonic      │    ──────────     │
+│Dm7         D3   F3   A3   C4          iim7    subdominant│        #■         │
 │G7          G2   B2   D3   F3          V7      dominant   │                   │
-│Em7         E2   G2   B2   D3          iiim7   tonic      │    ──────────     │
-│A7          A2   C#3   E3   G3         VI7     V7/ii      │                   │
-│Dm9         D2   F2   A2   C3   E3     iim9    subdominant│    ─────■────     │
-│                                                          │                   │
-│NOTES                                                   ■ │    ──────────     │
-│ add a note...                         SAVE[⏎] VIEW ALL[N]│        #■         │
+│Em7         E2   G2   B2   D3          iiim7   tonic      │                   │
+│A7          A2   C#3   E3   G3         VI7     V7/ii      │    ────#■────     │
+│Dm9         D2   F2   A2   C3   E3     iim9    subdominant│                   │
+│                                                          │    ──────────     │
+│NOTES                                                   ■ │         ■         │
+│ add a note...                         SAVE[⏎] VIEW ALL[N]│    ──────────     │
 │CHORD       NOTE                                          │                   │
-│C7#9        great over a static vamp #hendrix #voicing    │                   │
+│C7#9        great over a static vamp #hendrix #voicing    │    ──────────     │
 │C7#9        two hands, sustain down ⏎ lean into the #9 on…│                   │
-│C7#9        the Hendrix voicing, low and wide             │                   │
+│C7#9        the Hendrix voicing, low and wide             │    ──────────     │
 ├──────────────────────────────────────────────────────────┴───────────────────┤
-│ SUSTAIN: ON ●    ARPEGGIO[A]: ON ●    STATE: RELEASED ●       INPUT[I]: FAKE │
+│ SUSTAIN: ON ●               STATE: RELEASED ●                 INPUT[I]: FAKE │
 └──────────────────────────────────────────────────────────────────────────────┘

@@ -122,8 +122,6 @@ enum Action {
     CycleKeyTonic,
     /// `m`: flips the key context's mode, major/minor (ticket #16).
     ToggleKeyMode,
-    /// `a` in the packed skin: flips arpeggio mode (spec #20).
-    ToggleArpeggio,
     Nothing,
 }
 
@@ -168,8 +166,10 @@ fn action_for(
 /// [`action_for`] with the skin's own key table. PUSH and plain bind every
 /// key. The packed skin (spec #20) binds none of `p`, `-`, `+`, `x` and
 /// Ctrl-x — it draws no drill, settle or export, and a mode with no readout
-/// is a trap — and adds `a` (arpeggio) and `n` (switch screen), both only
-/// with an empty field, as the design's `[A]` and `[N]` hints say.
+/// is a trap — and adds `n` (switch screen), only with an empty field, as
+/// the design's `[N]` hint says. `a` (arpeggio) was bound here until
+/// 2026-09-10, when Michael found no use for the mode while playing; the
+/// foot no longer shows it, so the key went with it.
 fn action_for_skin(
     skin: Skin,
     key: KeyEvent,
@@ -188,7 +188,6 @@ fn action_for_skin(
     match key.code {
         KeyCode::Char('c') if ctrl => Action::Quit,
         KeyCode::Char('x') if ctrl && hidden => Action::ExportJson,
-        KeyCode::Char('a') if packed && active_field_is_empty => Action::ToggleArpeggio,
         KeyCode::Char('n') if packed && active_field_is_empty => Action::NextScreen,
         KeyCode::Up if picker_open => Action::PickerUp,
         KeyCode::Down if picker_open => Action::PickerDown,
@@ -371,7 +370,6 @@ fn apply(action: Action, model: &mut AppModel, ui: &mut UiState) -> bool {
         Action::SettleUp => model.increase_settle(),
         Action::CycleKeyTonic => model.cycle_key_tonic(),
         Action::ToggleKeyMode => model.toggle_key_mode(),
-        Action::ToggleArpeggio => model.toggle_arpeggio(),
         Action::Nothing => {}
     }
     true
@@ -1147,23 +1145,23 @@ mod tests {
     }
 
     #[test]
-    fn packed_binds_a_to_arpeggio_and_n_to_the_next_screen_with_an_empty_field() {
-        assert_eq!(packed(KeyCode::Char('a'), true), Action::ToggleArpeggio);
+    fn packed_binds_n_to_the_next_screen_with_an_empty_field_and_a_to_nothing() {
         assert_eq!(packed(KeyCode::Char('n'), true), Action::NextScreen);
+        // `a` types: the skin shows no arpeggio readout, so it binds no key.
+        assert_eq!(packed(KeyCode::Char('a'), true), Action::Type('a'));
         // With text in the field the letters are text.
-        assert_eq!(packed(KeyCode::Char('a'), false), Action::Type('a'));
         assert_eq!(packed(KeyCode::Char('n'), false), Action::Type('n'));
-        // The other skins never saw these bindings and still do not.
+        // The other skins never saw the `n` binding and still do not.
         for skin in [Skin::Push, Skin::Plain] {
             let action = action_for_skin(
                 skin,
-                key(KeyCode::Char('a')),
+                key(KeyCode::Char('n')),
                 Screen::NowPlaying,
                 true,
                 false,
                 false,
             );
-            assert_eq!(action, Action::Type('a'), "{skin:?}");
+            assert_eq!(action, Action::Type('n'), "{skin:?}");
         }
     }
 
@@ -1208,16 +1206,5 @@ mod tests {
         assert_eq!(packed(KeyCode::Tab, true), Action::NextScreen);
         assert_eq!(packed(KeyCode::Left, false), Action::StepHistoryBack);
         assert_eq!(packed(KeyCode::Enter, false), Action::Commit);
-    }
-
-    #[test]
-    fn toggle_arpeggio_flips_the_mode_both_ways() {
-        let mut model = model_with_notes();
-        assert!(!model.is_arpeggio());
-        apply(Action::ToggleArpeggio, &mut model, &mut UiState::default());
-        assert!(model.is_arpeggio());
-        assert!(model.frame().arpeggio);
-        apply(Action::ToggleArpeggio, &mut model, &mut UiState::default());
-        assert!(!model.is_arpeggio());
     }
 }

@@ -1,24 +1,24 @@
 ┌──────────────────────────────────────────────────────────┬───────────────────┐
 │ WATCHORD                                                 │                   │
-├──────────────────────────────────────────────────────────┤    ▄▀▀▀▄ ▄▀▀▄     │
-│KEY[K][M]:  —                                             │    █     █        │
-│FUNCTION:   —                                             │    █     █▀▀▄     │
-│NUMERAL:    —                                             │    █     █  █     │
-│KEYS:       C3   E3   G3   A3                             │    ▀▄▄▄▀ ▀▄▄▀     │
+├──────────────────────────────────────────────────────────┤        C6         │
+│KEY[K][M]:  —                                             │                   │
+│FUNCTION:   —                                             │     C MAJOR 6     │
+│NUMERAL:    —                                             │                   │
+│KEYS:       C3   E3   G3   A3                             │                   │
 │                                                          │                   │
-│READINGS                                                ■ │     C MAJOR 6     │
+│READINGS                                                ■ │    ──────────     │
 │NAME        ORIGIN     FIT             NUMERAL FUNCTION   │                   │
 │C6          HEADLINE   EXACT           —       —          │    ──────────     │
 │Am7/C       REROOTED   EXACT           —       —          │                   │
 │CΔ6         ENHARMONIC EXACT           —       —          │    ──────────     │
-│                                                          │                   │
-│HISTORY                                                 ■ │    ──────────     │
-│NAME        KEYS                       NUMERAL FUNCTION   │         ■         │
+│                                                          │         ■         │
+│HISTORY                                                 ■ │    ─────■────     │
+│NAME        KEYS                       NUMERAL FUNCTION   │                   │
 │C6          C3   E3   G3   A3          —       —          │    ─────■────     │
 │                                                          │                   │
-│NOTES                                                   ■ │    ─────■────     │
+│NOTES                                                   ■ │        ─■─        │
 │ add a note...                         SAVE[⏎] VIEW ALL[N]│                   │
-│CHORD       NOTE                                          │        ─■─        │
+│CHORD       NOTE                                          │                   │
 ├──────────────────────────────────────────────────────────┴───────────────────┤
-│ SUSTAIN: OFF ●    ARPEGGIO[A]: OFF ●    STATE: PLAYING ●      INPUT[I]: FAKE │
+│ SUSTAIN: OFF ●               STATE: PLAYING ●                 INPUT[I]: FAKE │
 └──────────────────────────────────────────────────────────────────────────────┘

@@ -20,5 +20,5 @@
 │CHORD       NOTE                                          │                   │
 │C7#9        great over a static vamp #hendrix #voicing    │                   │
 ├──────────────────────────────────────────────────────────┴───────────────────┤
-│ SUSTAIN: ON ●    ARPEGGIO[A]: ON ●    STATE: PLAYING ●        INPUT[I]: FAKE │
+│ SUSTAIN: ON ●               STATE: PLAYING ●                  INPUT[I]: FAKE │
 └──────────────────────────────────────────────────────────────────────────────┘

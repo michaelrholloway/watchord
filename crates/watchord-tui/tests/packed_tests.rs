@@ -205,7 +205,7 @@ fn assert_words(text: &str, present: &[&str], absent: &[&str], what: &str) {
 }
 
 /// The words every Now Playing frame carries, whatever the chord.
-const CHROME: [&str; 12] = [
+const CHROME: [&str; 11] = [
     "WATCHORD",
     "KEY",
     "FUNCTION:",
@@ -217,7 +217,6 @@ const CHROME: [&str; 12] = [
     "SAVE[⏎]",
     "VIEW ALL[N]",
     "SUSTAIN:",
-    "ARPEGGIO[A]:",
 ];
 /// The fields the skin leaves off screen (spec #20).
 const OFF_SCREEN: [&str; 7] = [
@@ -287,32 +286,39 @@ fn now_playing_at_80x24_draws_the_design() {
     assert!(rows[21].contains('┴'), "{}", rows[21]);
     let staff_column = |y: usize| -> String { rows[y].chars().skip(60).collect() };
     // `C6` fits the column as a fine figure: five rows of half blocks.
-    // A blank row, the figure, a blank row, the spoken form, a blank row.
+    // At 80 columns the staff column is 19 cells: too narrow for a
+    // four-glyph figure, so every name is one centred line and the block
+    // is four rows whatever the chord: a blank row, the name, a blank row,
+    // the spoken form; then a blank, then the staff.
     let blank = |y: usize| staff_column(y).trim_matches('│').trim().is_empty();
     assert!(blank(1), "{}", rows[1]);
-    for (y, row) in rows.iter().enumerate().take(7).skip(2) {
-        assert!(
-            staff_column(y).chars().any(|c| "▀▄█".contains(c)),
-            "row {y} is figure\n{row}"
-        );
-    }
-    assert!(blank(7), "{}", rows[7]);
-    let spoken = staff_column(8);
-    assert!(spoken.contains("C MAJOR 6"), "{}", rows[8]);
-    // Centred: as much space on the left as on the right, give or take one.
-    let lead = spoken.len() - spoken.trim_start().len();
-    let trail = spoken.trim_end_matches('│').len() - spoken.trim_end_matches('│').trim_end().len();
+    let name = staff_column(2);
+    assert!(name.contains("C6"), "{}", rows[2]);
+    let lead = name.len() - name.trim_start().len();
+    let trail = name.trim_end_matches('│').len() - name.trim_end_matches('│').trim_end().len();
     assert!(
         lead.abs_diff(trail) <= 1,
         "lead {lead} trail {trail}\n{}",
-        rows[8]
+        rows[2]
     );
-    assert!(blank(9), "{}", rows[9]);
+    assert!(blank(3), "{}", rows[3]);
+    assert!(staff_column(4).contains("C MAJOR 6"), "{}", rows[4]);
+    assert!(blank(5), "{}", rows[5]);
     assert!(
-        !rows[9].contains('┤'),
+        !rows[5].contains('┤'),
         "no rule under the headline\n{}",
-        rows[9]
+        rows[5]
     );
+    // At 96 columns the column is 23 cells and `C6` draws as a figure:
+    // five rows of half blocks under the blank row.
+    let (wide, _) = render(&model.frame(), &UiState::default(), 96, 24);
+    let wide_column = |y: usize| -> String { wide[y].chars().skip(72).collect() };
+    for (y, row) in wide.iter().enumerate().take(7).skip(2) {
+        assert!(
+            wide_column(y).chars().any(|c| "▀▄█".contains(c)),
+            "row {y} is figure at 96 columns\n{row}"
+        );
+    }
     assert_snapshot("packed-now-playing-80x24", &rows);
 
     // Four rows taller, the three readings and both notes fit.
@@ -678,4 +684,60 @@ fn mask_times(rows: &[String]) -> Vec<String> {
             out
         })
         .collect()
+}
+
+/// `i` opens the picker in the notes list's rows: `All inputs` first, then
+/// every device, the highlighted row lime; closed, the notes are back.
+#[test]
+fn the_input_picker_draws_in_the_notes_rows_while_open() {
+    let model = rich_model();
+    let mut frame = model.frame();
+    frame.inputs = vec!["Yamaha P-125".to_string(), "IAC Driver Bus 1".to_string()];
+    let ui = UiState {
+        input_picker_open: true,
+        input_picker_index: 1,
+        ..UiState::default()
+    };
+    let (rows, hits) = render(&frame, &ui, 80, 40);
+    let text = text_of(&rows);
+    assert_words(
+        &text,
+        &["INPUT", "All inputs", "Yamaha P-125", "IAC Driver Bus 1"],
+        &["great over a static vamp"],
+        "packed picker open",
+    );
+    assert!(hits.note_rows.is_empty(), "no note rows under the picker");
+    let (rows, _) = render(&frame, &UiState::default(), 80, 40);
+    let text = text_of(&rows);
+    assert_words(
+        &text,
+        &["great over a static vamp"],
+        &["All inputs"],
+        "packed picker closed",
+    );
+}
+
+/// The headline block's height is a fact about the column, not the chord:
+/// a name too wide for the figure draws as a line in the same rows, so the
+/// staff never moves between chords. And no ARPEGGIO on the foot.
+#[test]
+fn the_headline_block_keeps_its_height_when_the_name_is_too_wide_for_a_figure() {
+    let short = fake_model(false); // C6 fits as a figure at 80 columns
+    let long = rich_model(); // C7#9: 21 cells, wider than the 17 available
+    let staff_top = |frame: &Frame| -> usize {
+        let (rows, _) = render(frame, &UiState::default(), 80, 30);
+        rows.iter()
+            .position(|r| {
+                r.chars()
+                    .skip(60)
+                    .collect::<String>()
+                    .contains("──────────")
+            })
+            .expect("a staff line")
+    };
+    assert_eq!(staff_top(&short.frame()), staff_top(&long.frame()));
+    let (rows, _) = render(&long.frame(), &UiState::default(), 80, 30);
+    let text = text_of(&rows);
+    assert!(text.contains("C7#9"), "the name draws as a line\n{text}");
+    assert_words(&text, &[], &["ARPEGGIO"], "no arpeggio on the foot");
 }
