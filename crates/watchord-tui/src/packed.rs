@@ -5,8 +5,9 @@
 //! quarters hold the title over a rule, then on one column grid the KEY,
 //! FUNCTION, NUMERAL and KEYS rows, the READINGS table, the HISTORY table
 //! and the NOTES section with the field and the saved notes. The right
-//! quarter holds the headline — the name over the spoken form — at the top
-//! and the staff under it, full height, no rule between. Section headers
+//! quarter holds the headline — the name as a fine figure where it fits,
+//! else one line, over the spoken form — at the top and the staff under
+//! it, full height, no rule between. Section headers
 //! are rows filled `#1E1E1E`; one blank row divides two sections (the
 //! layout Michael asked for on 2026-09-09, over the frame's narrow left
 //! panel).
@@ -27,6 +28,7 @@ use watchord_model::notes::tags_of;
 use watchord_model::{Frame, FrameState, Screen};
 use watchord_theory::staff::{Clef, StaffNote};
 
+use crate::fine;
 use crate::push::Token;
 use crate::screens::{Drawn, Hits, ScrollTarget, UiState};
 
@@ -116,10 +118,43 @@ const TOO_SMALL: &str = "watchord needs 80×24";
 /// The staff column's share of the inner width: the right quarter. The
 /// headline and every table take the rest, at the left.
 const STAFF_SHARE: u16 = 4;
-/// The headline's rows at the top of the staff column: the name, then the
-/// spoken form with the fit detail after it. A blank row follows, then the
-/// staff.
-const HEADLINE_ROWS: u16 = 2;
+/// How the headline draws at the top of the staff column: the name as a
+/// fine figure at `scale`, or as one line when no scale fits, then the
+/// spoken form with the fit detail after it. `rows` is the block's height;
+/// a blank row follows, then the staff.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HeadlinePlan {
+    scale: Option<u16>,
+    rows: u16,
+}
+
+/// The headline's name as drawn: `≈` before it when the fit is nearest,
+/// `—` when there is no chord.
+fn headline_name(frame: &Frame) -> String {
+    match frame.headline.as_ref() {
+        Some(headline) => match &headline.approximation {
+            Some(mark) => format!("{mark} {}", headline.name),
+            None => headline.name.clone(),
+        },
+        None => ABSENT.to_string(),
+    }
+}
+
+/// The largest figure that fits the staff column, leaving the staff its
+/// nine rows and a blank row; one text line when none does, or when there
+/// is no chord to draw.
+fn plan_headline(frame: &Frame, column: Rect) -> HeadlinePlan {
+    let name = headline_name(frame);
+    let figure_rows = column.height.saturating_sub(1 + 1 + STAFF_ROWS);
+    let scale = match frame.headline {
+        Some(_) => fine::scale_to_fit(&name, column.width.saturating_sub(2), figure_rows),
+        None => None,
+    };
+    HeadlinePlan {
+        scale,
+        rows: scale.map_or(1, fine::height) + 1,
+    }
+}
 /// A five-line staff: nine rows, one per position — a line on each even
 /// row, a space on each odd row — so every head sits exactly on its line or
 /// in its space. Text alone, so every terminal draws the same staff.
@@ -285,19 +320,24 @@ pub fn draw_into(area: Rect, buf: &mut Buffer, frame: &Frame, ui: &UiState) -> D
         width: divider_x - x0 - 1,
         height: body_bottom - y0 - 2,
     };
-    let headline = Rect {
+    let column = Rect {
         x: divider_x + 1,
         y: y0 + 1,
         width: x1 - divider_x - 1,
-        height: HEADLINE_ROWS,
+        height: body_bottom - y0,
+    };
+    let plan = plan_headline(frame, column);
+    let headline = Rect {
+        height: plan.rows,
+        ..column
     };
     let staff = Rect {
-        y: y0 + 1 + HEADLINE_ROWS + 1,
-        height: body_bottom - y0 - HEADLINE_ROWS - 1,
-        ..headline
+        y: column.y + plan.rows + 1,
+        height: column.height - plan.rows - 1,
+        ..column
     };
     let cursor = canvas.sections(sections, frame, ui, &mut hits);
-    canvas.headline_box(headline, frame);
+    canvas.headline_box(headline, frame, plan);
     canvas.staff_box(staff, frame);
 
     // Foot.
@@ -529,22 +569,26 @@ impl Canvas<'_> {
 
     // MARK: Staff column
 
-    /// At the top of the staff column: the name in lime, one bold line,
-    /// with `≈` before it when the fit is nearest; under it the spoken form,
-    /// then the fit detail dim after two spaces. Declined: `—` and the
-    /// reason. Long text is cut to the column.
-    fn headline_box(&mut self, box_: Rect, frame: &Frame) {
+    /// At the top of the staff column: the name in lime — the fine figure
+    /// at the plan's scale, else one bold line — with `≈` before it when
+    /// the fit is nearest; under it the spoken form, then the fit detail
+    /// dim after two spaces. Declined: `—` and the reason. Long text is cut
+    /// to the column.
+    fn headline_box(&mut self, box_: Rect, frame: &Frame, plan: HeadlinePlan) {
         let x = box_.x + 1;
         let w = box_.width - 2;
-        let name = match frame.headline.as_ref() {
-            Some(headline) => match &headline.approximation {
-                Some(mark) => format!("{mark} {}", headline.name),
-                None => headline.name.clone(),
-            },
-            None => ABSENT.to_string(),
-        };
-        self.put_cut(x, box_.y, &name, w, lime_bold());
-        let y = box_.y + 1;
+        let name = headline_name(frame);
+        match plan.scale {
+            Some(scale) => {
+                for (row, line) in (box_.y..).zip(fine::render(&name, scale)) {
+                    self.put(x, row, &line, lime_bold());
+                }
+            }
+            None => {
+                self.put_cut(x, box_.y, &name, w, lime_bold());
+            }
+        }
+        let y = box_.y + plan.rows - 1;
         match frame.headline.as_ref() {
             Some(headline) => {
                 let spoken = headline.spoken.to_uppercase();

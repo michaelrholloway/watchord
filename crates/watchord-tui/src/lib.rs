@@ -2,7 +2,8 @@
 //!
 //! Three skins draw the same [`watchord_model::Frame`]. [`push`] holds PUSH's
 //! tokens, the six structural roles and the ported elements — the only module
-//! that draws a rule or a box. [`figure`] is the headline drawn large.
+//! that draws a rule or a box. [`figure`] is the headline drawn large in
+//! full cells; [`fine`] draws it on a half-block grid.
 //! [`screens`] composes PUSH's two screens. [`plain`] is the plain skin: the
 //! terminal's own colours, no boxes, every field. [`packed`] is the packed
 //! skin: Michael's Figma frame at 80×24. [`tui`] owns the terminal and the
@@ -10,6 +11,7 @@
 
 pub mod export;
 pub mod figure;
+pub mod fine;
 pub mod packed;
 pub mod plain;
 pub mod push;

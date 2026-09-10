@@ -286,17 +286,23 @@ fn now_playing_at_80x24_draws_the_design() {
     assert!(rows[0].contains('┬'), "{}", rows[0]);
     assert!(rows[21].contains('┴'), "{}", rows[21]);
     let staff_column = |y: usize| -> String { rows[y].chars().skip(60).collect() };
-    assert!(staff_column(1).starts_with(" C6 "), "{}", rows[1]);
-    assert!(staff_column(2).starts_with(" C MAJOR 6"), "{}", rows[2]);
+    // `C6` fits the column as a fine figure: five rows of half blocks.
+    for (y, row) in rows.iter().enumerate().take(6).skip(1) {
+        assert!(
+            staff_column(y).chars().any(|c| "▀▄█".contains(c)),
+            "row {y} is figure\n{row}"
+        );
+    }
+    assert!(staff_column(6).starts_with(" C MAJOR 6"), "{}", rows[6]);
     assert!(
-        staff_column(3).trim_matches('│').trim().is_empty(),
+        staff_column(7).trim_matches('│').trim().is_empty(),
         "{}",
-        rows[3]
+        rows[7]
     );
     assert!(
-        !rows[3].contains('┤'),
+        !rows[7].contains('┤'),
         "no rule under the headline\n{}",
-        rows[3]
+        rows[7]
     );
     assert_snapshot("packed-now-playing-80x24", &rows);
 
