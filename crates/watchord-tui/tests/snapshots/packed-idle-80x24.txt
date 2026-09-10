@@ -1,21 +1,21 @@
 ┌──────────────────────────────────────────────────────────┬───────────────────┐
-│ WATCHORD                                                 │ —                 │
-├──────────────────────────────────────────────────────────┤                   │
+│ WATCHORD                                                 │                   │
+├──────────────────────────────────────────────────────────┤         —         │
 │KEY[K][M]:  —                                             │                   │
 │FUNCTION:   —                                             │                   │
 │NUMERAL:    —                                             │                   │
 │KEYS:                                                     │                   │
 │                                                          │                   │
-│READINGS                                                ■ │    ──────────     │
-│NAME        ORIGIN     FIT             NUMERAL FUNCTION   │                   │
-│—                                                         │    ──────────     │
-│                                                          │                   │
-│HISTORY                                                 ■ │    ──────────     │
-│NAME        KEYS                       NUMERAL FUNCTION   │                   │
-│—                                                         │    ──────────     │
-│                                                          │                   │
-│NOTES                                                   ■ │    ──────────     │
-│ play a chord to write a note          SAVE[⏎] VIEW ALL[N]│                   │
+│READINGS                                                ■ │                   │
+│NAME        ORIGIN     FIT             NUMERAL FUNCTION   │    ──────────     │
+│—                                                         │                   │
+│                                                          │    ──────────     │
+│HISTORY                                                 ■ │                   │
+│NAME        KEYS                       NUMERAL FUNCTION   │    ──────────     │
+│—                                                         │                   │
+│                                                          │    ──────────     │
+│NOTES                                                   ■ │                   │
+│ play a chord to write a note          SAVE[⏎] VIEW ALL[N]│    ──────────     │
 │CHORD       NOTE                                          │                   │
 │                                                          │                   │
 │                                                          │                   │

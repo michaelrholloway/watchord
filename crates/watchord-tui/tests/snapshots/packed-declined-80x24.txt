@@ -1,21 +1,21 @@
 ┌──────────────────────────────────────────────────────────┬───────────────────┐
-│ WATCHORD                                                 │ —                 │
-├──────────────────────────────────────────────────────────┤ no honest readin… │
+│ WATCHORD                                                 │                   │
+├──────────────────────────────────────────────────────────┤         —         │
 │KEY[K][M]:  —                                             │                   │
-│FUNCTION:   —                                             │                   │
+│FUNCTION:   —                                             │ no honest readin… │
 │NUMERAL:    —                                             │                   │
 │KEYS:       C3   C#3                                      │                   │
 │                                                          │                   │
-│READINGS                                                ■ │    ──────────     │
-│NAME        ORIGIN     FIT             NUMERAL FUNCTION   │                   │
-│—                                                         │    ──────────     │
-│                                                          │                   │
-│HISTORY                                                 ■ │    ──────────     │
-│NAME        KEYS                       NUMERAL FUNCTION   │                   │
-│C  C#       C3   C#3                   —       —          │    ──────────     │
-│                                                          │                   │
-│NOTES                                                   ■ │    ──────────     │
-│ add a note...                         SAVE[⏎] VIEW ALL[N]│                   │
+│READINGS                                                ■ │                   │
+│NAME        ORIGIN     FIT             NUMERAL FUNCTION   │    ──────────     │
+│—                                                         │                   │
+│                                                          │    ──────────     │
+│HISTORY                                                 ■ │                   │
+│NAME        KEYS                       NUMERAL FUNCTION   │    ──────────     │
+│C  C#       C3   C#3                   —       —          │                   │
+│                                                          │    ──────────     │
+│NOTES                                                   ■ │                   │
+│ add a note...                         SAVE[⏎] VIEW ALL[N]│    ──────────     │
 │CHORD       NOTE                                          │                   │
 │                                                          │                   │
 │                                                          │                   │

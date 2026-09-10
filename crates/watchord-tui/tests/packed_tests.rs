@@ -287,22 +287,31 @@ fn now_playing_at_80x24_draws_the_design() {
     assert!(rows[21].contains('┴'), "{}", rows[21]);
     let staff_column = |y: usize| -> String { rows[y].chars().skip(60).collect() };
     // `C6` fits the column as a fine figure: five rows of half blocks.
-    for (y, row) in rows.iter().enumerate().take(6).skip(1) {
+    // A blank row, the figure, a blank row, the spoken form, a blank row.
+    let blank = |y: usize| staff_column(y).trim_matches('│').trim().is_empty();
+    assert!(blank(1), "{}", rows[1]);
+    for (y, row) in rows.iter().enumerate().take(7).skip(2) {
         assert!(
             staff_column(y).chars().any(|c| "▀▄█".contains(c)),
             "row {y} is figure\n{row}"
         );
     }
-    assert!(staff_column(6).starts_with(" C MAJOR 6"), "{}", rows[6]);
+    assert!(blank(7), "{}", rows[7]);
+    let spoken = staff_column(8);
+    assert!(spoken.contains("C MAJOR 6"), "{}", rows[8]);
+    // Centred: as much space on the left as on the right, give or take one.
+    let lead = spoken.len() - spoken.trim_start().len();
+    let trail = spoken.trim_end_matches('│').len() - spoken.trim_end_matches('│').trim_end().len();
     assert!(
-        staff_column(7).trim_matches('│').trim().is_empty(),
-        "{}",
-        rows[7]
+        lead.abs_diff(trail) <= 1,
+        "lead {lead} trail {trail}\n{}",
+        rows[8]
     );
+    assert!(blank(9), "{}", rows[9]);
     assert!(
-        !rows[7].contains('┤'),
+        !rows[9].contains('┤'),
         "no rule under the headline\n{}",
-        rows[7]
+        rows[9]
     );
     assert_snapshot("packed-now-playing-80x24", &rows);
 

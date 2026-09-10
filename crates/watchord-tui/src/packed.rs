@@ -118,10 +118,11 @@ const TOO_SMALL: &str = "watchord needs 80×24";
 /// The staff column's share of the inner width: the right quarter. The
 /// headline and every table take the rest, at the left.
 const STAFF_SHARE: u16 = 4;
-/// How the headline draws at the top of the staff column: the name as a
-/// fine figure at `scale`, or as one line when no scale fits, then the
-/// spoken form with the fit detail after it. `rows` is the block's height;
-/// a blank row follows, then the staff.
+/// How the headline draws at the top of the staff column: a blank row, the
+/// name as a fine figure at `scale` or as one line when no scale fits, a
+/// blank row, then the spoken form with the fit detail after it. All
+/// centred. `rows` is the block's height; a blank row follows, then the
+/// staff.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct HeadlinePlan {
     scale: Option<u16>,
@@ -145,14 +146,16 @@ fn headline_name(frame: &Frame) -> String {
 /// is no chord to draw.
 fn plan_headline(frame: &Frame, column: Rect) -> HeadlinePlan {
     let name = headline_name(frame);
-    let figure_rows = column.height.saturating_sub(1 + 1 + STAFF_ROWS);
+    // A blank row above the name, one between name and spoken form, the
+    // spoken row, a blank, then the staff's nine rows.
+    let figure_rows = column.height.saturating_sub(3 + 1 + STAFF_ROWS);
     let scale = match frame.headline {
         Some(_) => fine::scale_to_fit(&name, column.width.saturating_sub(2), figure_rows),
         None => None,
     };
     HeadlinePlan {
         scale,
-        rows: scale.map_or(1, fine::height) + 1,
+        rows: 1 + scale.map_or(1, fine::height) + 1 + 1,
     }
 }
 /// A five-line staff: nine rows, one per position — a line on each even
@@ -445,6 +448,12 @@ impl Canvas<'_> {
         self.put(x, y, &cut(text, width as usize), style)
     }
 
+    /// Writes `text` centred in `width` cells from `x`.
+    fn put_centered(&mut self, x: u16, y: u16, width: u16, text: &str, style: Style) {
+        let left = x + width.saturating_sub(text.width() as u16) / 2;
+        self.put(left, y, text, style);
+    }
+
     /// Fills `width` cells at `(x, y)` with spaces in `style`.
     fn fill_row(&mut self, x: u16, y: u16, width: u16, style: Style) {
         let blank: String = " ".repeat(width as usize);
@@ -580,27 +589,27 @@ impl Canvas<'_> {
         let name = headline_name(frame);
         match plan.scale {
             Some(scale) => {
-                for (row, line) in (box_.y..).zip(fine::render(&name, scale)) {
-                    self.put(x, row, &line, lime_bold());
+                let left = x + w.saturating_sub(fine::width(&name, scale)) / 2;
+                for (row, line) in (box_.y + 1..).zip(fine::render(&name, scale)) {
+                    self.put(left, row, &line, lime_bold());
                 }
             }
             None => {
-                self.put_cut(x, box_.y, &name, w, lime_bold());
+                self.put_centered(x, box_.y + 1, w, &cut(&name, w as usize), lime_bold());
             }
         }
         let y = box_.y + plan.rows - 1;
         match frame.headline.as_ref() {
             Some(headline) => {
-                let spoken = headline.spoken.to_uppercase();
-                let written = self.put_cut(x, y, &spoken, w, ink()).width;
+                let mut spoken = headline.spoken.to_uppercase();
                 if let Some(detail) = headline.fit_detail.as_deref() {
-                    let at = x + written + 2;
-                    self.put_cut(at, y, detail, (x + w).saturating_sub(at), dim());
+                    spoken = format!("{spoken}  {detail}");
                 }
+                self.put_centered(x, y, w, &cut(&spoken, w as usize), ink());
             }
             None => {
                 if let Some(reason) = frame.declined.as_deref() {
-                    self.put_cut(x, y, reason, w, dim());
+                    self.put_centered(x, y, w, &cut(reason, w as usize), dim());
                 }
             }
         }

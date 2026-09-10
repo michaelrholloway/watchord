@@ -1,39 +1,39 @@
 ┌────────────────────────────────────────────────────────────────────────────────────────┬─────────────────────────────┐
-│ WATCHORD                                                                               │ ▄▀▀▀▄ ▀▀▀█  █ █  ▄▀▀▄       │
-├────────────────────────────────────────────────────────────────────────────────────────┤ █        █ ▀█▀█▀ █  █       │
-│KEY[K][M]:  C MAJOR                                                                     │ █       █   █ █   ▀▀█       │
-│FUNCTION:   V7/IV                                                                       │ █      ▄▀  ▀█▀█▀    █       │
-│NUMERAL:    I7#9                                                                        │ ▀▄▄▄▀  █    ▀ ▀  ▀▄▄▀       │
-│KEYS:       C1   E2   A#2   D#3   G3                                                    │ C DOMINANT 7 SHARP 9        │
+│ WATCHORD                                                                               │                             │
+├────────────────────────────────────────────────────────────────────────────────────────┤    ▄▀▀▀▄ ▀▀▀█  █ █  ▄▀▀▄    │
+│KEY[K][M]:  C MAJOR                                                                     │    █        █ ▀█▀█▀ █  █    │
+│FUNCTION:   V7/IV                                                                       │    █       █   █ █   ▀▀█    │
+│NUMERAL:    I7#9                                                                        │    █      ▄▀  ▀█▀█▀    █    │
+│KEYS:       C1   E2   A#2   D#3   G3                                                    │    ▀▄▄▄▀  █    ▀ ▀  ▀▄▄▀    │
 │                                                                                        │                             │
-│READINGS                                                                              ■ │                             │
+│READINGS                                                                              ■ │    C DOMINANT 7 SHARP 9     │
 │NAME        ORIGIN     FIT                       NUMERAL FUNCTION                       │                             │
-│C7#9        HEADLINE   EXACT                     I7#9    V7/IV                          │         ──────────          │
-│Eb/C        REROOTED   EXACT                     bIII    chromatic                      │                             │
-│                                                                                        │         ──────────          │
-│HISTORY                                                                               ■ │                             │
-│NAME        KEYS                                 NUMERAL FUNCTION                       │         ──────────          │
-│CΔ7         C3   E3   G3   B3                    IΔ7     tonic                          │                             │
-│Am7         A2   C3   E3   G3                    vim7    tonic                          │         ─────■────          │
-│Dm7         D3   F3   A3   C4                    iim7    subdominant                    │                             │
-│G7          G2   B2   D3   F3                    V7      dominant                       │         ──────────          │
-│Em7         E2   G2   B2   D3                    iiim7   tonic                          │             #■              │
-│A7          A2   C#3   E3   G3                   VI7     V7/ii                          │                             │
+│C7#9        HEADLINE   EXACT                     I7#9    V7/IV                          │                             │
+│Eb/C        REROOTED   EXACT                     bIII    chromatic                      │         ──────────          │
+│                                                                                        │                             │
+│HISTORY                                                                               ■ │         ──────────          │
+│NAME        KEYS                                 NUMERAL FUNCTION                       │                             │
+│CΔ7         C3   E3   G3   B3                    IΔ7     tonic                          │         ──────────          │
+│Am7         A2   C3   E3   G3                    vim7    tonic                          │                             │
+│Dm7         D3   F3   A3   C4                    iim7    subdominant                    │         ─────■────          │
+│G7          G2   B2   D3   F3                    V7      dominant                       │                             │
+│Em7         E2   G2   B2   D3                    iiim7   tonic                          │         ──────────          │
+│A7          A2   C#3   E3   G3                   VI7     V7/ii                          │             #■              │
 │Dm9         D2   F2   A2   C3   E3               iim9    subdominant                    │                             │
-│G13         G2   B2   D3   F3   E4               V13     dominant                       │         ────#■────          │
-│C7#9        C1   E2   A#2   D#3   G3             I7#9    V7/IV                          │                             │
+│G13         G2   B2   D3   F3   E4               V13     dominant                       │                             │
+│C7#9        C1   E2   A#2   D#3   G3             I7#9    V7/IV                          │         ────#■────          │
+│                                                                                        │                             │
+│NOTES                                                                                 ■ │         ──────────          │
+│ add a note...                                                       SAVE[⏎] VIEW ALL[N]│              ■              │
+│CHORD       NOTE                                                                        │         ──────────          │
+│C7#9        great over a static vamp #hendrix #voicing                                  │                             │
+│C7#9        two hands, sustain down ⏎ lean into the #9 on top                           │         ──────────          │
+│C7#9        the Hendrix voicing, low and wide                                           │                             │
 │                                                                                        │         ──────────          │
-│NOTES                                                                                 ■ │              ■              │
-│ add a note...                                                       SAVE[⏎] VIEW ALL[N]│         ──────────          │
-│CHORD       NOTE                                                                        │                             │
-│C7#9        great over a static vamp #hendrix #voicing                                  │         ──────────          │
-│C7#9        two hands, sustain down ⏎ lean into the #9 on top                           │                             │
-│C7#9        the Hendrix voicing, low and wide                                           │         ──────────          │
 │                                                                                        │                             │
 │                                                                                        │             ───             │
 │                                                                                        │                             │
 │                                                                                        │             ─■─             │
-│                                                                                        │                             │
 │                                                                                        │                             │
 ├────────────────────────────────────────────────────────────────────────────────────────┴─────────────────────────────┤
 │ SUSTAIN: ON ●                 ARPEGGIO[A]: ON ●                 STATE: PLAYING ●                      INPUT[I]: FAKE │
